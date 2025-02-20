@@ -4,116 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Image Comparison Slider with Diff Toggle</title>
-    <style>
-        body, html {
-            margin: 0;
-            padding: 0;
-            height: 100%;
-            font-family: Arial, sans-serif;
-            overflow: auto;
-        }
-        .compare {
-            position: relative;
-            width: 100%;
-            overflow: hidden;
-        }
-        .compare img {
-            display: block;
-            width: 100%;
-            height: auto;
-        }
-        .image-container {
-            position: relative;
-        }
-        .image-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            clip-path: inset(0 50% 0 0);
-        }
-        .slider {
-            position: absolute;
-            z-index: 3;
-            top: 0;
-            bottom: 0;
-            left: 50%;
-            width: 40px;
-            transform: translateX(-50%);
-            cursor: col-resize;
-        }
-        .slider-line {
-            position: absolute;
-            left: 50%;
-            top: 0;
-            bottom: 0;
-            width: 2px;
-            background: white;
-            box-shadow: 0 0 10px rgba(0,0,0,0.5);
-        }
-        .slider-button {
-            position: absolute;
-            left: 50%;
-            top: 50%;
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: white;
-            transform: translate(-50%, -50%);
-            box-shadow: 0 0 10px rgba(0,0,0,0.5);
-        }
-        .slider-button:before,
-        .slider-button:after {
-            content: '';
-            position: absolute;
-            top: 50%;
-            border: 6px solid transparent;
-        }
-        .slider-button:before {
-            left: 2px;
-            border-right-color: #999;
-        }
-        .slider-button:after {
-            right: 2px;
-            border-left-color: #999;
-        }
-        .image-label {
-            position: absolute;
-            top: 20px;
-            color: white;
-            font-size: 18px;
-            font-weight: bold;
-            text-shadow: 0 0 5px rgba(0,0,0,0.5);
-            z-index: 4;
-        }
-        .left-label {
-            left: 20px;
-        }
-        .right-label {
-            right: 20px;
-        }
-        .toggle-button {
-            position: absolute;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            padding: 10px 20px;
-            background-color: rgba(255, 255, 255, 0.7);
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            z-index: 5;
-        }
-    </style>
+    <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
     <div class="compare">
         <div class="image-container">
-            <img id="baseImage" src="20250220-the-best-soft-chocolate-chip-cookies-tr-314.png" alt="Second Image">
+            <img id="baseImage" src="" alt="Second Image">
             <div class="image-overlay">
-                <img src="20250220-the-best-soft-chocolate-chip-cookies-master.png" alt="Original Image">
+                <img src="" alt="Original Image">
             </div>
             <div class="slider">
                 <div class="slider-line"></div>
@@ -129,10 +27,49 @@
         const slider = document.querySelector('.slider');
         const overlay = document.querySelector('.image-overlay');
         const baseImage = document.getElementById('baseImage');
+        const overlayImage = overlay.querySelector('img');
         const toggleButton = document.getElementById('toggleButton');
         const rightLabel = document.getElementById('rightLabel');
         let isResizing = false;
         let isDiffShowing = false;
+
+        // Add URL parameter parsing function
+        function getUrlParameter(name) {
+            const params = new URLSearchParams(window.location.search);
+            return params.get(name);
+        }
+
+        // Function to generate MD5 hash (you'll need to include an MD5 library)
+        async function getMD5(str) {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(str);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        // Load images from URL parameters
+        window.addEventListener('load', async () => {
+            const originalBase = getUrlParameter('original');
+            const secondBase = getUrlParameter('second');
+
+            if (!originalBase || !secondBase) return;
+
+            // Construct full image paths
+            const originalPath = `captures/${originalBase}.png`;
+            const secondPath = `captures/${secondBase}.png`;
+
+            // Generate diff path using hashes
+            const combinedHash = await getMD5(originalBase + secondBase);
+            const diffPath = `diffs/${combinedHash}.png`;
+
+            overlayImage.src = originalPath;
+            baseImage.src = secondPath;
+
+            // Store image URLs for toggle functionality
+            window.diffImageUrl = diffPath;
+            window.secondImageUrl = secondPath;
+        });
 
         slider.addEventListener('mousedown', (e) => {
             isResizing = true;
@@ -159,11 +96,11 @@
         toggleButton.addEventListener('click', () => {
             isDiffShowing = !isDiffShowing;
             if (isDiffShowing) {
-                baseImage.src = 'diff.png';
+                baseImage.src = '';
                 toggleButton.textContent = 'Show Second Image';
                 rightLabel.textContent = 'Diff Image';
             } else {
-                baseImage.src = '20250220-the-best-soft-chocolate-chip-cookies-master.png';
+                baseImage.src = '';
                 toggleButton.textContent = 'Show Diff';
                 rightLabel.textContent = 'Second Image';
             }
