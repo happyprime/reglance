@@ -14,6 +14,8 @@
 	},
 	"scripts": {
 		"lint": "eslint .",
-		"fix": "eslint . --fix"
+		"fix": "eslint . --fix",
+		"capture": "node capture.mjs",
+		"compare": "node compare.mjs"
 	}
 }
