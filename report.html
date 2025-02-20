@@ -1,110 +1,113 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Image Comparison Slider with Diff Toggle</title>
-    <link rel="stylesheet" href="assets/style.css">
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Image Comparison Slider with Diff Toggle</title>
+	<link rel="stylesheet" href="assets/style.css">
 </head>
+
 <body>
-    <div class="compare">
-        <div class="image-container">
-            <img id="baseImage" src="" alt="Second Image">
-            <div class="image-overlay">
-                <img src="" alt="Original Image">
-            </div>
-            <div class="slider">
-                <div class="slider-line"></div>
-                <div class="slider-button"></div>
-            </div>
-            <div class="image-label left-label">Original Image</div>
-            <div class="image-label right-label" id="rightLabel">Second Image</div>
-            <button class="toggle-button" id="toggleButton">Show Diff</button>
-        </div>
-    </div>
+	<div class="compare">
+		<div class="image-container">
+			<img id="baseImage" src="" alt="Second Image">
+			<div class="image-overlay">
+				<img src="" alt="Original Image">
+			</div>
+			<div class="slider">
+				<div class="slider-line"></div>
+				<div class="slider-button"></div>
+			</div>
+			<div class="image-label left-label">Original Image</div>
+			<div class="image-label right-label" id="rightLabel">Second Image</div>
+			<button class="toggle-button" id="toggleButton">Show Diff</button>
+		</div>
+	</div>
 
-    <script>
-        const slider = document.querySelector('.slider');
-        const overlay = document.querySelector('.image-overlay');
-        const baseImage = document.getElementById('baseImage');
-        const overlayImage = overlay.querySelector('img');
-        const toggleButton = document.getElementById('toggleButton');
-        const rightLabel = document.getElementById('rightLabel');
-        let isResizing = false;
-        let isDiffShowing = false;
+	<script>
+		const slider = document.querySelector('.slider');
+		const overlay = document.querySelector('.image-overlay');
+		const baseImage = document.getElementById('baseImage');
+		const overlayImage = overlay.querySelector('img');
+		const toggleButton = document.getElementById('toggleButton');
+		const rightLabel = document.getElementById('rightLabel');
+		let isResizing = false;
+		let isDiffShowing = false;
 
-        // Add URL parameter parsing function
-        function getUrlParameter(name) {
-            const params = new URLSearchParams(window.location.search);
-            return params.get(name);
-        }
+		// Add URL parameter parsing function
+		function getUrlParameter(name) {
+			const params = new URLSearchParams(window.location.search);
+			return params.get(name);
+		}
 
-        // Function to generate MD5 hash (you'll need to include an MD5 library)
-        async function getMD5(str) {
-            const encoder = new TextEncoder();
-            const data = encoder.encode(str);
-            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-        }
+		// Function to generate MD5 hash (you'll need to include an MD5 library)
+		async function getMD5(str) {
+			const encoder = new TextEncoder();
+			const data = encoder.encode(str);
+			const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+			const hashArray = Array.from(new Uint8Array(hashBuffer));
+			return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+		}
 
-        // Load images from URL parameters
-        window.addEventListener('load', async () => {
-            const originalBase = getUrlParameter('original');
-            const secondBase = getUrlParameter('second');
+		// Load images from URL parameters
+		window.addEventListener('load', async () => {
+			const originalBase = getUrlParameter('original');
+			const secondBase = getUrlParameter('second');
 
-            if (!originalBase || !secondBase) return;
+			if (!originalBase || !secondBase) return;
 
-            // Construct full image paths
-            const originalPath = `captures/${originalBase}.png`;
-            const secondPath = `captures/${secondBase}.png`;
+			// Construct full image paths
+			const originalPath = `captures/${originalBase}.png`;
+			const secondPath = `captures/${secondBase}.png`;
 
-            // Generate diff path using hashes
-            const combinedHash = await getMD5(originalBase + secondBase);
-            const diffPath = `diffs/${combinedHash}.png`;
+			// Generate diff path using hashes
+			const combinedHash = await getMD5(originalBase + secondBase);
+			const diffPath = `compares/${combinedHash}.png`;
 
-            overlayImage.src = originalPath;
-            baseImage.src = secondPath;
+			overlayImage.src = originalPath;
+			baseImage.src = secondPath;
 
-            // Store image URLs for toggle functionality
-            window.diffImageUrl = diffPath;
-            window.secondImageUrl = secondPath;
-        });
+			// Store image URLs for toggle functionality
+			window.diffImageUrl = diffPath;
+			window.secondImageUrl = secondPath;
+		});
 
-        slider.addEventListener('mousedown', (e) => {
-            isResizing = true;
-            document.addEventListener('mousemove', onMouseMove);
-            document.addEventListener('mouseup', onMouseUp);
-        });
+		slider.addEventListener('mousedown', (e) => {
+			isResizing = true;
+			document.addEventListener('mousemove', onMouseMove);
+			document.addEventListener('mouseup', onMouseUp);
+		});
 
-        function onMouseMove(e) {
-            if (!isResizing) return;
-            const container = slider.closest('.compare');
-            const containerRect = container.getBoundingClientRect();
-            let pos = (e.pageX - containerRect.left) / containerRect.width;
-            pos = Math.max(0, Math.min(1, pos));
-            overlay.style.clipPath = `inset(0 ${(1 - pos) * 100}% 0 0)`;
-            slider.style.left = pos * 100 + '%';
-        }
+		function onMouseMove(e) {
+			if (!isResizing) return;
+			const container = slider.closest('.compare');
+			const containerRect = container.getBoundingClientRect();
+			let pos = (e.pageX - containerRect.left) / containerRect.width;
+			pos = Math.max(0, Math.min(1, pos));
+			overlay.style.clipPath = `inset(0 ${(1 - pos) * 100}% 0 0)`;
+			slider.style.left = pos * 100 + '%';
+		}
 
-        function onMouseUp() {
-            isResizing = false;
-            document.removeEventListener('mousemove', onMouseMove);
-            document.removeEventListener('mouseup', onMouseUp);
-        }
+		function onMouseUp() {
+			isResizing = false;
+			document.removeEventListener('mousemove', onMouseMove);
+			document.removeEventListener('mouseup', onMouseUp);
+		}
 
-        toggleButton.addEventListener('click', () => {
-            isDiffShowing = !isDiffShowing;
-            if (isDiffShowing) {
-                baseImage.src = '';
-                toggleButton.textContent = 'Show Second Image';
-                rightLabel.textContent = 'Diff Image';
-            } else {
-                baseImage.src = '';
-                toggleButton.textContent = 'Show Diff';
-                rightLabel.textContent = 'Second Image';
-            }
-        });
-    </script>
+		toggleButton.addEventListener('click', () => {
+			isDiffShowing = !isDiffShowing;
+			if (isDiffShowing) {
+				baseImage.src = '';
+				toggleButton.textContent = 'Show Second Image';
+				rightLabel.textContent = 'Diff Image';
+			} else {
+				baseImage.src = '';
+				toggleButton.textContent = 'Show Diff';
+				rightLabel.textContent = 'Second Image';
+			}
+		});
+	</script>
 </body>
+
 </html>

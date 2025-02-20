@@ -56,52 +56,38 @@ pixelmatch(img1.data, img2.data, diff.data, img1.width, maxHeight, {
 	threshold: 0.1,
 });
 
-fs.writeFileSync('diff.png', PNG.sync.write(diff));
+// Add these functions after the imports
+function getBasename(filepath) {
+	return filepath.split('/').pop().replace(/\.[^/.]+$/, '');
+}
 
-console.log(`Comparison complete. Diff image saved as 'diff.png'.`);
-console.log(`Images processed at ${img1.width}x${maxHeight} resolution.`);
+async function sha256(str) {
+	const encoder = new TextEncoder();
+	const data = encoder.encode(str);
+	const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+	const hashArray = Array.from(new Uint8Array(hashBuffer));
+	return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
-/*
-resemble(image1)
-  .compareTo(image2)
-  .onComplete(data => {
+// Make the main code async
+async function main() {
+	// Create compares directory if it doesn't exist
+	if (!fs.existsSync('compares')) {
+		fs.mkdirSync('compares');
+	}
 
-	console.log( data );
-    console.log('Mismatch percentage:', data.misMatchPercentage);
+	// Generate the diff filename
+	const img1Base = getBasename(image1);
+	const img2Base = getBasename(image2);
+	const combinedHash = await sha256(img1Base + img2Base);
+	const diffPath = `compares/${combinedHash}.png`;
 
-    const diffImage = data.getBuffer();
+	fs.writeFileSync(diffPath, PNG.sync.write(diff));
 
-    fs.writeFileSync('diff.png', diffImage);
+	console.log(`Comparison complete. Diff image saved as '${diffPath}'.`);
+	console.log(`Images processed at ${img1.width}x${maxHeight} resolution.`);
+	console.log(`View comparison at: report.html?original=${img1Base}&second=${img2Base}`);
+}
 
-    const htmlReport = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Image Comparison Report</title>
-      <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; padding: 20px; }
-        h1 { color: #333; }
-        .image-container { display: flex; justify-content: space-between; margin-bottom: 20px; }
-        .image-container img { max-width: 30%; height: auto; }
-        .stats { background: #f4f4f4; padding: 10px; border-radius: 5px; }
-      </style>
-    </head>
-    <body>
-      <h1>Image Comparison Report</h1>
-      <div class="image-container">
-        <img src="${path.basename(image1)}" alt="Original Image">
-        <img src="${path.basename(image2)}" alt="New Image">
-        <img src="diff.png" alt="Diff Image">
-      </div>
-      <div class="stats">
-        <p>Mismatch Percentage: ${data.misMatchPercentage}%</p>
-        <p>Analysis Time: ${data.analysisTime} ms</p>
-      </div>
-    </body>
-    </html>
-    `;
-
-    fs.writeFileSync('report.html', htmlReport);
-    console.log('Comparison complete. Open report.html to view results.');
-  });
-*/
+// Call the main function
+main().catch(console.error);
