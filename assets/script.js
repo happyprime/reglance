@@ -13,6 +13,10 @@ slider.addEventListener('mousedown', (e) => {
 	document.addEventListener('mouseup', onMouseUp);
 });
 
+/**
+ *
+ * @param e
+ */
 function onMouseMove(e) {
 	if (!isResizing) return;
 	const container = slider.closest('.compare');
@@ -23,6 +27,9 @@ function onMouseMove(e) {
 	slider.style.left = pos * 100 + '%';
 }
 
+/**
+ *
+ */
 function onMouseUp() {
 	isResizing = false;
 	document.removeEventListener('mousemove', onMouseMove);

@@ -51,13 +51,20 @@ if (!fs.existsSync(comparesDir)) {
 	fs.mkdirSync(comparesDir);
 }
 
+/**
+ *
+ * @param originalPath
+ * @param secondPath
+ * @param diffPath
+ */
 async function generateReport(originalPath, secondPath, diffPath) {
 	// Read the template
 	let template = fs.readFileSync('report.html', 'utf8');
 
 	// Generate timestamp for filename
 	const now = new Date();
-	const timestamp = now.toISOString()
+	const timestamp = now
+		.toISOString()
 		.replace(/[-:]/g, '')
 		.replace('T', '-')
 		.replace(/\..+/, '');
@@ -81,18 +88,32 @@ async function generateReport(originalPath, secondPath, diffPath) {
 	return reportPath;
 }
 
+/**
+ *
+ * @param filepath
+ */
 function getBasename(filepath) {
-	return filepath.split('/').pop().replace(/\.[^/.]+$/, '');
+	return filepath
+		.split('/')
+		.pop()
+		.replace(/\.[^/.]+$/, '');
 }
 
+/**
+ *
+ * @param str
+ */
 async function sha256(str) {
 	const encoder = new TextEncoder();
 	const data = encoder.encode(str);
 	const hashBuffer = await crypto.subtle.digest('SHA-256', data);
 	const hashArray = Array.from(new Uint8Array(hashBuffer));
-	return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+	return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+/**
+ *
+ */
 async function main() {
 	// Determine the maximum height
 	const maxHeight = Math.max(img1.height, img2.height);
