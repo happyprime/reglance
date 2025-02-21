@@ -1,6 +1,8 @@
 import fs from 'fs';
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
+import path from 'path';
+import crypto from 'crypto';
 
 // Get command line arguments
 const [, , image1, image2] = process.argv;
@@ -39,24 +41,46 @@ function padImage(img, targetHeight) {
 	return paddedImg;
 }
 
-// Determine the maximum height
-const maxHeight = Math.max(img1.height, img2.height);
-
-// Pad images if necessary
-if (img1.height < maxHeight) {
-	img1 = padImage(img1, maxHeight);
+// Create reports and compares directories if they don't exist
+const reportsDir = 'reports';
+const comparesDir = 'compares';
+if (!fs.existsSync(reportsDir)) {
+	fs.mkdirSync(reportsDir);
 }
-if (img2.height < maxHeight) {
-	img2 = padImage(img2, maxHeight);
+if (!fs.existsSync(comparesDir)) {
+	fs.mkdirSync(comparesDir);
 }
 
-const diff = new PNG({ width: img1.width, height: maxHeight });
+async function generateReport(originalPath, secondPath, diffPath) {
+	// Read the template
+	let template = fs.readFileSync('report.html', 'utf8');
 
-pixelmatch(img1.data, img2.data, diff.data, img1.width, maxHeight, {
-	threshold: 0.1,
-});
+	// Generate timestamp for filename
+	const now = new Date();
+	const timestamp = now.toISOString()
+		.replace(/[-:]/g, '')
+		.replace('T', '-')
+		.replace(/\..+/, '');
 
-// Add these functions after the imports
+	// Calculate relative paths from report location to images
+	const relativeOriginal = path.relative(reportsDir, originalPath);
+	const relativeSecond = path.relative(reportsDir, secondPath);
+	const relativeDiff = path.relative(reportsDir, diffPath);
+
+	// Update image sources in the template
+	template = template.replace('{originalImage}', relativeOriginal);
+	template = template.replace('{secondImage}', relativeSecond);
+
+	// Add diff image path for the toggle functionality
+	template = template.replace('{diffImage}', relativeDiff);
+
+	// Save the report
+	const reportPath = path.join(reportsDir, `${timestamp}-compare.html`);
+	fs.writeFileSync(reportPath, template);
+
+	return reportPath;
+}
+
 function getBasename(filepath) {
 	return filepath.split('/').pop().replace(/\.[^/.]+$/, '');
 }
@@ -69,24 +93,40 @@ async function sha256(str) {
 	return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// Make the main code async
 async function main() {
-	// Create compares directory if it doesn't exist
-	if (!fs.existsSync('compares')) {
-		fs.mkdirSync('compares');
+	// Determine the maximum height
+	const maxHeight = Math.max(img1.height, img2.height);
+
+	// Pad images if necessary
+	if (img1.height < maxHeight) {
+		img1 = padImage(img1, maxHeight);
+	}
+	if (img2.height < maxHeight) {
+		img2 = padImage(img2, maxHeight);
 	}
 
-	// Generate the diff filename
+	const diff = new PNG({ width: img1.width, height: maxHeight });
+
+	pixelmatch(img1.data, img2.data, diff.data, img1.width, maxHeight, {
+		threshold: 0.1,
+	});
+
 	const img1Base = getBasename(image1);
 	const img2Base = getBasename(image2);
 	const combinedHash = await sha256(img1Base + img2Base);
-	const diffPath = `compares/${combinedHash}.png`;
 
+	// Generate diff filename using timestamp to ensure uniqueness
+	const diffPath = path.join(comparesDir, `${combinedHash}-diff.png`);
+
+	// Save the diff image
 	fs.writeFileSync(diffPath, PNG.sync.write(diff));
 
+	// Generate and save the report
+	const reportPath = await generateReport(image1, image2, diffPath);
+
 	console.log(`Comparison complete. Diff image saved as '${diffPath}'.`);
+	console.log(`Report generated at: ${reportPath}`);
 	console.log(`Images processed at ${img1.width}x${maxHeight} resolution.`);
-	console.log(`View comparison at: report.html?original=${img1Base}&second=${img2Base}`);
 }
 
 // Call the main function
