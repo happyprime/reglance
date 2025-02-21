@@ -98,11 +98,12 @@ function generateFileName(propertyKey, urlKey, tag, url) {
 	const date = new Date();
 	const dateStr = date
 		.toLocaleDateString('en-US', {
-			year: '2-digit',
+			year: 'numeric',
 			month: '2-digit',
 			day: '2-digit',
 		})
-		.replace(/\//g, '');
+		.replace(/\//g, '')
+		.replace(/^(\d{2})(\d{2})(\d{4})$/, '$3$1$2');
 
 	// If no urlKey provided, generate one from the URL
 	if (!urlKey) {
