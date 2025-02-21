@@ -106,11 +106,15 @@ async function captureProperty(propertyKey) {
 		process.exit(1);
 	}
 
+	const defaults = config.defaults;
+
 	const property = config[propertyKey];
 
 	// Capture all URLs for the property
 	for (const [urlKey, url] of Object.entries(property.urls)) {
-		for (const viewport of property.viewports) {
+		const viewports = property.viewports || defaults.viewports;
+
+		for (const viewport of viewports) {
 			const outputPath = path.join(
 				capturesDir,
 				generateFileName(propertyKey, urlKey, viewport.name)
@@ -148,9 +152,7 @@ const { propertyKey } = parseArgs();
 // Check if property key is provided
 if (!propertyKey) {
 	console.error('Please provide a property key.');
-	console.error(
-		'Usage: node capture.js <property_key>'
-	);
+	console.error('Usage: node capture.js <property_key>');
 	console.error('Example: node capture.js pinchofyum');
 	process.exit(1);
 }
