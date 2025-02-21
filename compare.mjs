@@ -75,11 +75,11 @@ async function generateReport(originalPath, secondPath, diffPath) {
 	const relativeDiff = path.relative(reportsDir, diffPath);
 
 	// Update image sources in the template
-	template = template.replace('{originalImage}', relativeOriginal);
-	template = template.replace('{secondImage}', relativeSecond);
+	template = template.replaceAll('{originalImage}', relativeOriginal);
+	template = template.replaceAll('{secondImage}', relativeSecond);
 
 	// Add diff image path for the toggle functionality
-	template = template.replace('{diffImage}', relativeDiff);
+	template = template.replaceAll('{diffImage}', relativeDiff);
 
 	// Save the report
 	const reportPath = path.join(reportsDir, `${timestamp}-compare.html`);

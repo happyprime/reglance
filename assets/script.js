@@ -38,12 +38,13 @@ function onMouseUp() {
 
 toggleButton.addEventListener('click', () => {
 	isDiffShowing = !isDiffShowing;
+
 	if (isDiffShowing) {
-		baseImage.src = '';
+		baseImage.src = diffImage;
 		toggleButton.textContent = 'Show Second Image';
 		rightLabel.textContent = 'Diff Image';
 	} else {
-		baseImage.src = '';
+		baseImage.src = secondImage;
 		toggleButton.textContent = 'Show Diff';
 		rightLabel.textContent = 'Second Image';
 	}
