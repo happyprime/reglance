@@ -1,7 +1,6 @@
 import { chromium } from 'playwright';
 import fs from 'fs';
 import path from 'path';
-import crypto from 'crypto';
 
 // Read config file
 const config = JSON.parse(fs.readFileSync('./config.json', 'utf8'));
@@ -91,43 +90,17 @@ async function autoScroll(page) {
  *
  * @param propertyKey
  * @param urlKey
- * @param tag
- * @param url
+ * @param viewportName
  */
-function generateFileName(propertyKey, urlKey, tag, url) {
-	const date = new Date();
-	const dateStr = date
-		.toLocaleDateString('en-US', {
-			year: 'numeric',
-			month: '2-digit',
-			day: '2-digit',
-		})
-		.replace(/\//g, '')
-		.replace(/^(\d{2})(\d{2})(\d{4})$/, '$3$1$2');
-
-	// If no urlKey provided, generate one from the URL
-	if (!urlKey) {
-		const hash = crypto
-			.createHash('md5')
-			.update(url)
-			.digest('hex')
-			.slice(0, 8);
-		urlKey = `url-${hash}`;
-	}
-
-	// Use 'original' as default tag if none provided
-	tag = tag || 'original';
-
-	return `${dateStr}-${propertyKey}-${urlKey}-${tag}.png`;
+function generateFileName(propertyKey, urlKey, viewportName) {
+	return `${propertyKey}-${urlKey}-${viewportName}.png`;
 }
 
 /**
  *
  * @param propertyKey
- * @param tag
- * @param specificUrl
  */
-async function captureProperty(propertyKey, tag, specificUrl) {
+async function captureProperty(propertyKey) {
 	if (!config[propertyKey]) {
 		console.error(`Property "${propertyKey}" not found in config.`);
 		process.exit(1);
@@ -135,21 +108,19 @@ async function captureProperty(propertyKey, tag, specificUrl) {
 
 	const property = config[propertyKey];
 
-	if (specificUrl) {
-		// Capture single URL
-		const outputPath = path.join(
-			capturesDir,
-			generateFileName(propertyKey, null, tag, specificUrl)
-		);
-		await captureFullPageScreenshot(specificUrl, outputPath);
-	} else {
-		// Capture all URLs for the property
-		for (const [urlKey, url] of Object.entries(property.urls)) {
+	// Capture all URLs for the property
+	for (const [urlKey, url] of Object.entries(property.urls)) {
+		for (const viewport of property.viewports) {
 			const outputPath = path.join(
 				capturesDir,
-				generateFileName(propertyKey, urlKey, tag, url)
+				generateFileName(propertyKey, urlKey, viewport.name)
 			);
-			await captureFullPageScreenshot(url, outputPath);
+			await captureFullPageScreenshot(
+				url,
+				outputPath,
+				viewport.width,
+				viewport.height
+			);
 		}
 	}
 }
@@ -161,40 +132,28 @@ async function captureProperty(propertyKey, tag, specificUrl) {
 function parseArgs() {
 	const args = process.argv.slice(2);
 	let propertyKey = null;
-	let tag = null;
-	let url = null;
 
 	for (const arg of args) {
-		if (arg.startsWith('--url=')) {
-			url = arg.split('=')[1];
-		} else if (!propertyKey) {
+		if (!propertyKey) {
 			propertyKey = arg;
-		} else {
-			tag = arg;
 		}
 	}
 
-	return { propertyKey, tag, url };
+	return { propertyKey };
 }
 
 // Get and validate arguments
-const { propertyKey, tag, url } = parseArgs();
+const { propertyKey } = parseArgs();
 
 // Check if property key is provided
 if (!propertyKey) {
 	console.error('Please provide a property key.');
 	console.error(
-		'Usage: node capture.js <property_key> [tag] [--url=specific_url]'
+		'Usage: node capture.js <property_key>'
 	);
-	console.error('Example: node capture.js pinchofyum feature123');
-	console.error(
-		'Example: node capture.js pinchofyum --url=https://example.com'
-	);
-	console.error(
-		'Example: node capture.js pinchofyum feature123 --url=https://example.com'
-	);
+	console.error('Example: node capture.js pinchofyum');
 	process.exit(1);
 }
 
 // Run the capture process
-captureProperty(propertyKey, tag, url);
+captureProperty(propertyKey);
