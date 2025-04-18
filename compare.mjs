@@ -9,63 +9,103 @@ const config = JSON.parse(fs.readFileSync('config.json', 'utf8'));
 const reportDomain = config.defaults.report_domain;
 
 // Get command line arguments
-const [, , slug] = process.argv;
+const [, , input] = process.argv;
 
-// Check if slug is provided
-if (!slug) {
-	console.error('Please provide a slug for the images to compare.');
-	console.error('Usage: node compare.js <slug>');
+// Check if input is provided
+if (!input) {
+	console.error('Please provide either a slug or property key.');
+	console.error('Usage: node compare.js <slug|property>');
 	console.error('Example: node compare.js pcouncil-single-desktop');
+	console.error('Example: node compare.js pcouncil');
 	process.exit(1);
 }
 
-// Construct image paths
-const image1 = path.join('controls', `${slug}.png`);
-const image2 = path.join('captures', `${slug}.png`);
-
-// Check if files exist
-if (!fs.existsSync(image1) || !fs.existsSync(image2)) {
-	console.error('One or both of the specified image files do not exist.');
-	console.error(`Looking for: ${image1} and ${image2}`);
-	process.exit(1);
+// Function to check if input is a property key
+function isPropertyKey(input) {
+	return config[input] !== undefined;
 }
 
-let img1 = PNG.sync.read(fs.readFileSync(image1));
-let img2 = PNG.sync.read(fs.readFileSync(image2));
+// Function to get viewports for a property, falling back to defaults
+function getViewports(property) {
+	return config[property]?.viewports || config.defaults.viewports;
+}
 
-// Ensure both images have the same width
-if (img1.width !== img2.width) {
-	console.error('Images must have the same width.');
-	process.exit(1);
+// Function to generate index.html for a property
+function generatePropertyIndex(property, reports) {
+	const viewports = getViewports(property);
+	const urls = config[property].urls;
+
+	let indexContent = `
+<!DOCTYPE html>
+<html>
+<head>
+	<title>${property} - Visual Regression Reports</title>
+	<style>
+		body { font-family: sans-serif; margin: 2rem; }
+		table { border-collapse: collapse; width: 100%; }
+		th, td { padding: 0.5rem; border: 1px solid #ddd; text-align: left; }
+		th { background: #f5f5f5; }
+		tr:hover { background: #f9f9f9; }
+		a { color: #0066cc; text-decoration: none; }
+		a:hover { text-decoration: underline; }
+	</style>
+</head>
+<body>
+	<h1>${property} - Visual Regression Reports</h1>
+	<table>
+		<thead>
+			<tr>
+				<th>URL</th>
+				<th>Viewport</th>
+				<th>Report</th>
+				<th>Diff</th>
+			</tr>
+		</thead>
+		<tbody>
+	`;
+
+	// Sort reports by URL and viewport
+	reports.sort((a, b) => {
+		if (a.url === b.url) {
+			return a.viewport.name.localeCompare(b.viewport.name);
+		}
+		return a.url.localeCompare(b.url);
+	});
+
+	for (const report of reports) {
+		indexContent += `
+			<tr>
+				<td>${report.url}</td>
+				<td>${report.viewport.name} (${report.viewport.width}x${report.viewport.height})</td>
+				<td><a href="${report.reportUrl}">View Report</a></td>
+				<td><a href="${report.diffUrl}">View Diff</a></td>
+			</tr>
+		`;
+	}
+
+	indexContent += `
+		</tbody>
+	</table>
+</body>
+</html>
+	`;
+
+	return indexContent;
 }
 
 // Function to pad an image to a specific height
-/**
- *
- * @param img
- * @param targetHeight
- */
 function padImage(img, targetHeight) {
 	const paddedImg = new PNG({ width: img.width, height: targetHeight });
 	PNG.bitblt(img, paddedImg, 0, 0, img.width, img.height, 0, 0);
 	return paddedImg;
 }
 
-// Create reports and compares directories if they don't exist
-const reportsDir = 'reports';
-const comparesDir = 'compares';
-if (!fs.existsSync(reportsDir)) {
-	fs.mkdirSync(reportsDir);
-}
-if (!fs.existsSync(comparesDir)) {
-	fs.mkdirSync(comparesDir);
-}
-
 /**
- *
- * @param originalPath
- * @param secondPath
- * @param diffPath
+ * Generate a report for a comparison
+ * @param {string} originalPath - Path to the original image
+ * @param {string} secondPath - Path to the second image
+ * @param {string} diffPath - Path to the diff image
+ * @returns {Promise<{reportPath: string, reportUrl: string, diffUrl: string}>}
  */
 async function generateReport(originalPath, secondPath, diffPath) {
 	// Read the template
@@ -103,8 +143,9 @@ async function generateReport(originalPath, secondPath, diffPath) {
 }
 
 /**
- *
- * @param filepath
+ * Get the basename of a filepath
+ * @param {string} filepath - The filepath to process
+ * @returns {string} The basename without extension
  */
 function getBasename(filepath) {
 	return filepath
@@ -114,8 +155,9 @@ function getBasename(filepath) {
 }
 
 /**
- *
- * @param str
+ * Generate a SHA-256 hash of a string
+ * @param {string} str - The string to hash
+ * @returns {Promise<string>} The hexadecimal hash
  */
 async function sha256(str) {
 	const encoder = new TextEncoder();
@@ -125,14 +167,25 @@ async function sha256(str) {
 	return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/**
- *
- */
-async function main() {
-	// Determine the maximum height
-	const maxHeight = Math.max(img1.height, img2.height);
+// Function to compare a single slug
+async function compareSlug(slug) {
+	const image1 = path.join('controls', `${slug}.png`);
+	const image2 = path.join('captures', `${slug}.png`);
 
-	// Pad images if necessary
+	if (!fs.existsSync(image1) || !fs.existsSync(image2)) {
+		console.error(`One or both images do not exist for slug: ${slug}`);
+		return null;
+	}
+
+	let img1 = PNG.sync.read(fs.readFileSync(image1));
+	let img2 = PNG.sync.read(fs.readFileSync(image2));
+
+	if (img1.width !== img2.width) {
+		console.error(`Images must have the same width for slug: ${slug}`);
+		return null;
+	}
+
+	const maxHeight = Math.max(img1.height, img2.height);
 	if (img1.height < maxHeight) {
 		img1 = padImage(img1, maxHeight);
 	}
@@ -141,28 +194,85 @@ async function main() {
 	}
 
 	const diff = new PNG({ width: img1.width, height: maxHeight });
-
 	pixelmatch(img1.data, img2.data, diff.data, img1.width, maxHeight, {
 		threshold: 0.1,
 	});
 
-	const img1Base = getBasename(image1);
-	const img2Base = getBasename(image2);
-	const combinedHash = await sha256(img1Base + img2Base);
-
-	// Generate diff filename using timestamp to ensure uniqueness
-	const diffPath = path.join(comparesDir, `${combinedHash}-diff.png`);
-
-	// Save the diff image
+	const diffPath = path.join(comparesDir, `${slug}-diff.png`);
 	fs.writeFileSync(diffPath, PNG.sync.write(diff));
 
-	// Generate and save the report
-	const { reportPath, reportUrl, diffUrl } = await generateReport(image1, image2, diffPath);
+	const reportPath = await generateReport(image1, image2, diffPath);
+	return reportPath;
+}
 
-	console.log(`Comparison complete.`);
-	console.log(`Diff image saved as: ${diffUrl}`);
-	console.log(`Report generated at: ${reportUrl}`);
-	console.log(`Images processed at ${img1.width}x${maxHeight} resolution.`);
+// Function to compare all URLs for a property
+async function compareProperty(property) {
+	const propertyConfig = config[property];
+	if (!propertyConfig || !propertyConfig.urls) {
+		console.error(`No URLs configured for property: ${property}`);
+		return;
+	}
+
+	const viewports = getViewports(property);
+	const reports = [];
+
+	// Create property-specific directories
+	const propertyReportsDir = path.join(reportsDir, property);
+	const propertyComparesDir = path.join(comparesDir, property);
+	if (!fs.existsSync(propertyReportsDir)) {
+		fs.mkdirSync(propertyReportsDir, { recursive: true });
+	}
+	if (!fs.existsSync(propertyComparesDir)) {
+		fs.mkdirSync(propertyComparesDir, { recursive: true });
+	}
+
+	for (const [urlKey, url] of Object.entries(propertyConfig.urls)) {
+		for (const viewport of viewports) {
+			const slug = `${property}-${urlKey}-${viewport.name}`;
+			console.log(`Comparing ${slug}...`);
+
+			const result = await compareSlug(slug);
+			if (result) {
+				reports.push({
+					url: url,
+					viewport: viewport,
+					...result
+				});
+			}
+		}
+	}
+
+	// Generate index file
+	const indexContent = generatePropertyIndex(property, reports);
+	const indexPath = path.join(propertyReportsDir, 'index.html');
+	fs.writeFileSync(indexPath, indexContent);
+
+	console.log(`\nProperty comparison complete for ${property}`);
+	console.log(`Index file generated at: ${reportDomain}/${path.relative(process.cwd(), indexPath)}`);
+}
+
+// Main function
+async function main() {
+	if (isPropertyKey(input)) {
+		await compareProperty(input);
+	} else {
+		const result = await compareSlug(input);
+		if (result) {
+			console.log(`\nComparison complete for ${input}`);
+			console.log(`Report generated at: ${result.reportUrl}`);
+			console.log(`Diff image saved as: ${result.diffUrl}`);
+		}
+	}
+}
+
+// Create reports and compares directories if they don't exist
+const reportsDir = 'reports';
+const comparesDir = 'compares';
+if (!fs.existsSync(reportsDir)) {
+	fs.mkdirSync(reportsDir);
+}
+if (!fs.existsSync(comparesDir)) {
+	fs.mkdirSync(comparesDir);
 }
 
 // Call the main function
