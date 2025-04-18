@@ -3,10 +3,21 @@ import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
 import path from 'path';
 import crypto from 'crypto';
+import open from 'open';
 
 // Read config file
 const config = JSON.parse(fs.readFileSync('config.json', 'utf8'));
 const reportDomain = config.defaults.report_domain;
+
+// Default pixelmatch options
+const defaultPixelmatchOptions = {
+	threshold: 0.1,
+	includeAA: false,
+	alpha: 0.1,
+	diffColor: [255, 0, 0], // Red for differences
+	diffColorAlt: [0, 0, 255], // Blue for anti-aliased differences
+	diffMask: false
+};
 
 // Get command line arguments
 const [, , input] = process.argv;
@@ -38,6 +49,9 @@ function generatePropertyIndex(property, reports) {
 	// Read the diff viewer template
 	const diffViewerTemplate = fs.readFileSync('diff-viewer.html', 'utf8');
 
+	// Get the pixelmatch options for this property
+	const pixelmatchOptions = config[property]?.pixelmatchOptions || defaultPixelmatchOptions;
+
 	let indexContent = `
 <!DOCTYPE html>
 <html>
@@ -55,10 +69,65 @@ function generatePropertyIndex(property, reports) {
 		.diff-percentage.high { color: #d32f2f; }
 		.diff-percentage.medium { color: #f57c00; }
 		.diff-percentage.low { color: #388e3c; }
+		.settings {
+			background: #f8f9fa;
+			padding: 1rem;
+			border-radius: 4px;
+			margin-bottom: 1.5rem;
+			font-size: 0.9em;
+		}
+		.settings h2 {
+			margin: 0 0 0.5rem 0;
+			font-size: 1.1em;
+			color: #333;
+		}
+		.settings-grid {
+			display: grid;
+			grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+			gap: 1rem;
+		}
+		.setting-item {
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			padding: 0.5rem;
+			background: white;
+			border-radius: 4px;
+		}
+		.setting-label {
+			color: #666;
+		}
+		.setting-value {
+			font-weight: bold;
+			color: #333;
+		}
 	</style>
 </head>
 <body>
 	<h1>${property} - Visual Regression Reports</h1>
+
+	<div class="settings">
+		<h2>Comparison Settings</h2>
+		<div class="settings-grid">
+			<div class="setting-item">
+				<span class="setting-label">Threshold</span>
+				<span class="setting-value">${pixelmatchOptions.threshold}</span>
+			</div>
+			<div class="setting-item">
+				<span class="setting-label">Include Anti-Aliasing</span>
+				<span class="setting-value">${pixelmatchOptions.includeAA ? 'Yes' : 'No'}</span>
+			</div>
+			<div class="setting-item">
+				<span class="setting-label">Alpha Threshold</span>
+				<span class="setting-value">${pixelmatchOptions.alpha}</span>
+			</div>
+			<div class="setting-item">
+				<span class="setting-label">Diff Color</span>
+				<span class="setting-value" style="color: rgb(${pixelmatchOptions.diffColor.join(',')})">RGB(${pixelmatchOptions.diffColor.join(',')})</span>
+			</div>
+		</div>
+	</div>
+
 	<table>
 		<thead>
 			<tr>
@@ -130,9 +199,10 @@ function padImage(img, targetHeight) {
  * @param {string} urlKey - The URL key
  * @param {Object} viewport - The viewport configuration
  * @param {number} diffPercentage - The percentage of pixels that differ
+ * @param {Object} pixelmatchOptions - The options used for pixelmatch
  * @returns {Promise<{reportPath: string, reportUrl: string, diffUrl: string}>}
  */
-async function generateReport(originalPath, secondPath, diffPath, property, urlKey, viewport, diffPercentage) {
+async function generateReport(originalPath, secondPath, diffPath, property, urlKey, viewport, diffPercentage, pixelmatchOptions) {
 	// Read the template
 	let template = fs.readFileSync('report.html', 'utf8');
 
@@ -156,8 +226,11 @@ async function generateReport(originalPath, secondPath, diffPath, property, urlK
 	// Add diff image path for the toggle functionality
 	template = template.replaceAll('{diffImage}', relativeDiff);
 
-	// Add diff percentage to the template
+	// Add diff percentage and options to the template
 	template = template.replaceAll('{diffPercentage}', diffPercentage.toFixed(2));
+	template = template.replaceAll('{threshold}', pixelmatchOptions.threshold);
+	template = template.replaceAll('{includeAA}', pixelmatchOptions.includeAA ? 'Yes' : 'No');
+	template = template.replaceAll('{alpha}', pixelmatchOptions.alpha);
 
 	// Create a more unique filename
 	const filename = `${timestamp}-${property}-${urlKey}-${viewport.name}-compare.html`;
@@ -225,17 +298,30 @@ async function compareSlug(slug) {
 	}
 
 	const diff = new PNG({ width: img1.width, height: maxHeight });
-	const numDiffPixels = pixelmatch(img1.data, img2.data, diff.data, img1.width, maxHeight, {
-		threshold: 0.1,
-	});
+
+	// Get property-specific options or use defaults
+	const parts = slug.split('-');
+	const property = parts[0];
+	const propertyConfig = config[property] || {};
+	const pixelmatchOptions = {
+		...defaultPixelmatchOptions,
+		...propertyConfig.pixelmatchOptions
+	};
+
+	const numDiffPixels = pixelmatch(
+		img1.data,
+		img2.data,
+		diff.data,
+		img1.width,
+		maxHeight,
+		pixelmatchOptions
+	);
 
 	// Calculate percentage difference
 	const totalPixels = img1.width * maxHeight;
 	const diffPercentage = (numDiffPixels / totalPixels) * 100;
 
-	// Extract property, URL key, and viewport from slug
-	const parts = slug.split('-');
-	const property = parts[0];
+	// Extract URL key and viewport from slug
 	const viewportName = parts[parts.length - 1];
 	const urlKey = parts.slice(1, -1).join('-');
 
@@ -262,14 +348,15 @@ async function compareSlug(slug) {
 	const diffPath = path.join(comparesDir, `${slug}-diff.png`);
 	fs.writeFileSync(diffPath, PNG.sync.write(diff));
 
-	const reportPath = await generateReport(image1, image2, diffPath, property, urlKey, viewport, diffPercentage);
+	const reportPath = await generateReport(image1, image2, diffPath, property, urlKey, viewport, diffPercentage, pixelmatchOptions);
 	return {
 		reportPath,
 		reportUrl: reportPath.reportUrl,
 		diffUrl: reportPath.diffUrl,
 		diffPercentage,
 		numDiffPixels,
-		totalPixels
+		totalPixels,
+		pixelmatchOptions
 	};
 }
 
@@ -317,8 +404,12 @@ async function compareProperty(property) {
 	const indexPath = path.join(propertyReportsDir, 'index.html');
 	fs.writeFileSync(indexPath, indexContent);
 
+	const reportUrl = `${reportDomain}/${path.relative(process.cwd(), indexPath)}`;
 	console.log(`\nProperty comparison complete for ${property}`);
-	console.log(`Index file generated at: ${reportDomain}/${path.relative(process.cwd(), indexPath)}`);
+	console.log(`Index file generated at: ${reportUrl}`);
+
+	// Open the report in the default browser
+	await open(reportUrl);
 }
 
 // Main function
@@ -331,6 +422,9 @@ async function main() {
 			console.log(`\nComparison complete for ${input}`);
 			console.log(`Report generated at: ${result.reportUrl}`);
 			console.log(`Diff image saved as: ${result.diffUrl}`);
+
+			// Open the report in the default browser
+			await open(result.reportUrl);
 		}
 	}
 }
