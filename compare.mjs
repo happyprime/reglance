@@ -4,6 +4,10 @@ import pixelmatch from 'pixelmatch';
 import path from 'path';
 import crypto from 'crypto';
 
+// Read config file
+const config = JSON.parse(fs.readFileSync('config.json', 'utf8'));
+const reportDomain = config.defaults.report_domain;
+
 // Get command line arguments
 const [, , slug] = process.argv;
 
@@ -91,7 +95,11 @@ async function generateReport(originalPath, secondPath, diffPath) {
 	const reportPath = path.join(reportsDir, `${timestamp}-compare.html`);
 	fs.writeFileSync(reportPath, template);
 
-	return reportPath;
+	// Generate full URLs
+	const reportUrl = `${reportDomain}/${path.relative(process.cwd(), reportPath)}`;
+	const diffUrl = `${reportDomain}/${path.relative(process.cwd(), diffPath)}`;
+
+	return { reportPath, reportUrl, diffUrl };
 }
 
 /**
@@ -149,10 +157,11 @@ async function main() {
 	fs.writeFileSync(diffPath, PNG.sync.write(diff));
 
 	// Generate and save the report
-	const reportPath = await generateReport(image1, image2, diffPath);
+	const { reportPath, reportUrl, diffUrl } = await generateReport(image1, image2, diffPath);
 
-	console.log(`Comparison complete. Diff image saved as '${diffPath}'.`);
-	console.log(`Report generated at: ${reportPath}`);
+	console.log(`Comparison complete.`);
+	console.log(`Diff image saved as: ${diffUrl}`);
+	console.log(`Report generated at: ${reportUrl}`);
 	console.log(`Images processed at ${img1.width}x${maxHeight} resolution.`);
 }
 
