@@ -51,6 +51,10 @@ function generatePropertyIndex(property, reports) {
 		tr:hover { background: #f9f9f9; }
 		a { color: #0066cc; text-decoration: none; }
 		a:hover { text-decoration: underline; }
+		.diff-percentage { font-weight: bold; }
+		.diff-percentage.high { color: #d32f2f; }
+		.diff-percentage.medium { color: #f57c00; }
+		.diff-percentage.low { color: #388e3c; }
 	</style>
 </head>
 <body>
@@ -60,6 +64,7 @@ function generatePropertyIndex(property, reports) {
 			<tr>
 				<th>URL</th>
 				<th>Viewport</th>
+				<th>Difference</th>
 				<th>Report</th>
 				<th>Diff</th>
 			</tr>
@@ -67,28 +72,28 @@ function generatePropertyIndex(property, reports) {
 		<tbody>
 	`;
 
-	// Sort reports by URL and viewport
-	reports.sort((a, b) => {
-		if (a.url === b.url) {
-			return a.viewport.name.localeCompare(b.viewport.name);
-		}
-		return a.url.localeCompare(b.url);
-	});
+	// Sort reports by difference percentage (highest first)
+	reports.sort((a, b) => b.diffPercentage - a.diffPercentage);
 
 	// Prepare diff data for JavaScript
 	const diffData = reports.map(report => ({
 		property: property,
 		urlKey: Object.entries(urls).find(([_, url]) => url === report.url)?.[0] || 'unknown',
 		viewport: report.viewport,
-		diffUrl: report.diffUrl
+		diffUrl: report.diffUrl,
+		diffPercentage: report.diffPercentage
 	}));
 
 	for (const [index, report] of reports.entries()) {
 		const urlKey = Object.entries(urls).find(([_, url]) => url === report.url)?.[0] || 'unknown';
+		const diffClass = report.diffPercentage > 1 ? 'high' :
+			report.diffPercentage > 0.1 ? 'medium' : 'low';
+
 		indexContent += `
 			<tr>
 				<td>${report.url}</td>
 				<td>${report.viewport.name} (${report.viewport.width}x${report.viewport.height})</td>
+				<td class="diff-percentage ${diffClass}">${report.diffPercentage.toFixed(2)}%</td>
 				<td><a href="${report.reportUrl}">View Report</a></td>
 				<td><a href="#" onclick="openModal(window.diffData, ${index}); return false;">View Diff</a></td>
 			</tr>
@@ -124,9 +129,10 @@ function padImage(img, targetHeight) {
  * @param {string} property - The property key
  * @param {string} urlKey - The URL key
  * @param {Object} viewport - The viewport configuration
+ * @param {number} diffPercentage - The percentage of pixels that differ
  * @returns {Promise<{reportPath: string, reportUrl: string, diffUrl: string}>}
  */
-async function generateReport(originalPath, secondPath, diffPath, property, urlKey, viewport) {
+async function generateReport(originalPath, secondPath, diffPath, property, urlKey, viewport, diffPercentage) {
 	// Read the template
 	let template = fs.readFileSync('report.html', 'utf8');
 
@@ -149,6 +155,9 @@ async function generateReport(originalPath, secondPath, diffPath, property, urlK
 
 	// Add diff image path for the toggle functionality
 	template = template.replaceAll('{diffImage}', relativeDiff);
+
+	// Add diff percentage to the template
+	template = template.replaceAll('{diffPercentage}', diffPercentage.toFixed(2));
 
 	// Create a more unique filename
 	const filename = `${timestamp}-${property}-${urlKey}-${viewport.name}-compare.html`;
@@ -216,9 +225,13 @@ async function compareSlug(slug) {
 	}
 
 	const diff = new PNG({ width: img1.width, height: maxHeight });
-	pixelmatch(img1.data, img2.data, diff.data, img1.width, maxHeight, {
+	const numDiffPixels = pixelmatch(img1.data, img2.data, diff.data, img1.width, maxHeight, {
 		threshold: 0.1,
 	});
+
+	// Calculate percentage difference
+	const totalPixels = img1.width * maxHeight;
+	const diffPercentage = (numDiffPixels / totalPixels) * 100;
 
 	// Extract property, URL key, and viewport from slug
 	const parts = slug.split('-');
@@ -249,8 +262,15 @@ async function compareSlug(slug) {
 	const diffPath = path.join(comparesDir, `${slug}-diff.png`);
 	fs.writeFileSync(diffPath, PNG.sync.write(diff));
 
-	const reportPath = await generateReport(image1, image2, diffPath, property, urlKey, viewport);
-	return { reportPath, reportUrl: reportPath.reportUrl, diffUrl: reportPath.diffUrl };
+	const reportPath = await generateReport(image1, image2, diffPath, property, urlKey, viewport, diffPercentage);
+	return {
+		reportPath,
+		reportUrl: reportPath.reportUrl,
+		diffUrl: reportPath.diffUrl,
+		diffPercentage,
+		numDiffPixels,
+		totalPixels
+	};
 }
 
 // Function to compare all URLs for a property
