@@ -35,6 +35,9 @@ function generatePropertyIndex(property, reports) {
 	const viewports = getViewports(property);
 	const urls = config[property].urls;
 
+	// Read the diff viewer template
+	const diffViewerTemplate = fs.readFileSync('diff-viewer.html', 'utf8');
+
 	let indexContent = `
 <!DOCTYPE html>
 <html>
@@ -72,13 +75,22 @@ function generatePropertyIndex(property, reports) {
 		return a.url.localeCompare(b.url);
 	});
 
-	for (const report of reports) {
+	// Prepare diff data for JavaScript
+	const diffData = reports.map(report => ({
+		property: property,
+		urlKey: Object.entries(urls).find(([_, url]) => url === report.url)?.[0] || 'unknown',
+		viewport: report.viewport,
+		diffUrl: report.diffUrl
+	}));
+
+	for (const [index, report] of reports.entries()) {
+		const urlKey = Object.entries(urls).find(([_, url]) => url === report.url)?.[0] || 'unknown';
 		indexContent += `
 			<tr>
 				<td>${report.url}</td>
 				<td>${report.viewport.name} (${report.viewport.width}x${report.viewport.height})</td>
 				<td><a href="${report.reportUrl}">View Report</a></td>
-				<td><a href="${report.diffUrl}">View Diff</a></td>
+				<td><a href="#" onclick="openModal(window.diffData, ${index}); return false;">View Diff</a></td>
 			</tr>
 		`;
 	}
@@ -86,6 +98,10 @@ function generatePropertyIndex(property, reports) {
 	indexContent += `
 		</tbody>
 	</table>
+	${diffViewerTemplate}
+	<script>
+		window.diffData = ${JSON.stringify(diffData)};
+	</script>
 </body>
 </html>
 	`;
@@ -105,9 +121,12 @@ function padImage(img, targetHeight) {
  * @param {string} originalPath - Path to the original image
  * @param {string} secondPath - Path to the second image
  * @param {string} diffPath - Path to the diff image
+ * @param {string} property - The property key
+ * @param {string} urlKey - The URL key
+ * @param {Object} viewport - The viewport configuration
  * @returns {Promise<{reportPath: string, reportUrl: string, diffUrl: string}>}
  */
-async function generateReport(originalPath, secondPath, diffPath) {
+async function generateReport(originalPath, secondPath, diffPath, property, urlKey, viewport) {
 	// Read the template
 	let template = fs.readFileSync('report.html', 'utf8');
 
@@ -131,8 +150,11 @@ async function generateReport(originalPath, secondPath, diffPath) {
 	// Add diff image path for the toggle functionality
 	template = template.replaceAll('{diffImage}', relativeDiff);
 
+	// Create a more unique filename
+	const filename = `${timestamp}-${property}-${urlKey}-${viewport.name}-compare.html`;
+	const reportPath = path.join(reportsDir, filename);
+
 	// Save the report
-	const reportPath = path.join(reportsDir, `${timestamp}-compare.html`);
 	fs.writeFileSync(reportPath, template);
 
 	// Generate full URLs
@@ -198,11 +220,37 @@ async function compareSlug(slug) {
 		threshold: 0.1,
 	});
 
+	// Extract property, URL key, and viewport from slug
+	const parts = slug.split('-');
+	const property = parts[0];
+	const viewportName = parts[parts.length - 1];
+	const urlKey = parts.slice(1, -1).join('-');
+
+	// Find the viewport configuration
+	let viewport = null;
+	if (config[property]?.viewports) {
+		viewport = config[property].viewports.find(v => v.name === viewportName);
+	}
+
+	if (!viewport && config.defaults.viewports) {
+		viewport = config.defaults.viewports.find(v => v.name === viewportName);
+	}
+
+	if (!viewport) {
+		console.error(`Could not find viewport configuration for ${viewportName} in property ${property}`);
+		console.error('Available viewports:');
+		if (config[property]?.viewports) {
+			console.error(`Property ${property} viewports:`, config[property].viewports.map(v => v.name));
+		}
+		console.error('Default viewports:', config.defaults.viewports.map(v => v.name));
+		return null;
+	}
+
 	const diffPath = path.join(comparesDir, `${slug}-diff.png`);
 	fs.writeFileSync(diffPath, PNG.sync.write(diff));
 
-	const reportPath = await generateReport(image1, image2, diffPath);
-	return reportPath;
+	const reportPath = await generateReport(image1, image2, diffPath, property, urlKey, viewport);
+	return { reportPath, reportUrl: reportPath.reportUrl, diffUrl: reportPath.diffUrl };
 }
 
 // Function to compare all URLs for a property
@@ -214,6 +262,8 @@ async function compareProperty(property) {
 	}
 
 	const viewports = getViewports(property);
+	console.log(`Using viewports for ${property}:`, viewports.map(v => v.name));
+
 	const reports = [];
 
 	// Create property-specific directories
