@@ -5,18 +5,24 @@ import path from 'path';
 import crypto from 'crypto';
 
 // Get command line arguments
-const [, , image1, image2] = process.argv;
+const [, , slug] = process.argv;
 
-// Check if both image paths are provided
-if (!image1 || !image2) {
-	console.error('Please provide paths to two images.');
-	console.error('Usage: node compare.js <path_to_image1> <path_to_image2>');
+// Check if slug is provided
+if (!slug) {
+	console.error('Please provide a slug for the images to compare.');
+	console.error('Usage: node compare.js <slug>');
+	console.error('Example: node compare.js pcouncil-single-desktop');
 	process.exit(1);
 }
+
+// Construct image paths
+const image1 = path.join('controls', `${slug}.png`);
+const image2 = path.join('captures', `${slug}.png`);
 
 // Check if files exist
 if (!fs.existsSync(image1) || !fs.existsSync(image2)) {
 	console.error('One or both of the specified image files do not exist.');
+	console.error(`Looking for: ${image1} and ${image2}`);
 	process.exit(1);
 }
 
