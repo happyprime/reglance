@@ -7,8 +7,12 @@ const config = JSON.parse(fs.readFileSync('./config.json', 'utf8'));
 // Create controls directory if it doesn't exist
 const capturesDir = './captures';
 const controlsDir = './controls';
+const htmlControlsDir = path.join(controlsDir, 'html');
 if (!fs.existsSync(controlsDir)) {
 	fs.mkdirSync(controlsDir);
+}
+if (!fs.existsSync(htmlControlsDir)) {
+	fs.mkdirSync(htmlControlsDir, { recursive: true });
 }
 
 /**
@@ -17,7 +21,7 @@ if (!fs.existsSync(controlsDir)) {
  * @param {string} propertyKey - The property key from config
  * @param {string} urlKey - The URL key from config
  * @param {string} viewport - The viewport name
- * @returns {string|null} - Path to the most recent matching file or null if none found
+ * @returns {Object} - Paths to the most recent matching files or null if none found
  */
 function findLatestCapture(propertyKey, urlKey, viewport) {
 	if (!fs.existsSync(capturesDir)) {
@@ -36,7 +40,17 @@ function findLatestCapture(propertyKey, urlKey, viewport) {
 		.sort()
 		.reverse(); // Most recent first
 
-	return files.length > 0 ? path.join(capturesDir, files[0]) : null;
+	if (files.length === 0) {
+		return null;
+	}
+
+	const latestFile = files[0];
+	const htmlFile = latestFile.replace('.png', '.html');
+
+	return {
+		image: path.join(capturesDir, latestFile),
+		html: path.join(capturesDir, 'html', htmlFile)
+	};
 }
 
 /**
@@ -76,7 +90,17 @@ function processUrl(propertyKey, urlKey) {
 		);
 
 		if (latestCapture) {
-			copyToControls(latestCapture, propertyKey, urlKey, viewport.name);
+			// Move image file
+			const imageDest = path.join(controlsDir, path.basename(latestCapture.image));
+			fs.renameSync(latestCapture.image, imageDest);
+			console.log(`Moved ${latestCapture.image} to ${imageDest}`);
+
+			// Move HTML file if it exists
+			if (fs.existsSync(latestCapture.html)) {
+				const htmlDest = path.join(htmlControlsDir, path.basename(latestCapture.html));
+				fs.renameSync(latestCapture.html, htmlDest);
+				console.log(`Moved ${latestCapture.html} to ${htmlDest}`);
+			}
 		} else {
 			console.warn(
 				`No capture found for ${propertyKey}-${urlKey}-${viewport.name}`

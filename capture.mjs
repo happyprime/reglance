@@ -7,8 +7,12 @@ const config = JSON.parse(fs.readFileSync('./config.json', 'utf8'));
 
 // Create captures directory if it doesn't exist
 const capturesDir = './captures';
+const htmlCapturesDir = path.join(capturesDir, 'html');
 if (!fs.existsSync(capturesDir)) {
 	fs.mkdirSync(capturesDir);
+}
+if (!fs.existsSync(htmlCapturesDir)) {
+	fs.mkdirSync(htmlCapturesDir, { recursive: true });
 }
 
 /**
@@ -54,7 +58,13 @@ async function captureFullPageScreenshot(
 			fullPage: true,
 		});
 
+		// Capture HTML content
+		const htmlPath = path.join(htmlCapturesDir, path.basename(outputPath).replace('.png', '.html'));
+		const htmlContent = await page.content();
+		fs.writeFileSync(htmlPath, htmlContent);
+
 		console.log(`Full screenshot saved to ${outputPath}`);
+		console.log(`HTML content saved to ${htmlPath}`);
 	} catch (error) {
 		console.error('An error occurred:', error);
 	} finally {

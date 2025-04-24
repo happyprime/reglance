@@ -4,6 +4,7 @@ import pixelmatch from 'pixelmatch';
 import path from 'path';
 import crypto from 'crypto';
 import open from 'open';
+import { diffLines } from 'diff';
 
 // Read config file
 const config = JSON.parse(fs.readFileSync('config.json', 'utf8'));
@@ -39,6 +40,60 @@ function isPropertyKey(input) {
 // Function to get viewports for a property, falling back to defaults
 function getViewports(property) {
 	return config[property]?.viewports || config.defaults.viewports;
+}
+
+// Function to compare HTML content
+function compareHTML(html1, html2) {
+	const changes = diffLines(html1, html2);
+	let hasChanges = false;
+	let diffContent = '';
+
+	changes.forEach(part => {
+		if (part.added) {
+			hasChanges = true;
+			diffContent += `<div class="diff-added">${part.value}</div>`;
+		} else if (part.removed) {
+			hasChanges = true;
+			diffContent += `<div class="diff-removed">${part.value}</div>`;
+		} else {
+			diffContent += `<div class="diff-unchanged">${part.value}</div>`;
+		}
+	});
+
+	return { hasChanges, diffContent };
+}
+
+// Function to generate HTML diff report
+function generateHTMLDiffReport(originalHTML, secondHTML, property, urlKey, viewport) {
+	const { hasChanges, diffContent } = compareHTML(originalHTML, secondHTML);
+
+	const htmlDiffTemplate = `
+<!DOCTYPE html>
+<html>
+<head>
+	<title>HTML Diff - ${property} - ${urlKey} - ${viewport.name}</title>
+	<style>
+		body { font-family: monospace; margin: 2rem; }
+		.diff-added { background-color: #e6ffec; }
+		.diff-removed { background-color: #ffeef0; }
+		.diff-unchanged { color: #666; }
+		pre { margin: 0; white-space: pre-wrap; }
+	</style>
+</head>
+<body>
+	<h1>HTML Diff Report</h1>
+	<p>Property: ${property}</p>
+	<p>URL: ${urlKey}</p>
+	<p>Viewport: ${viewport.name} (${viewport.width}x${viewport.height})</p>
+	<p>Status: ${hasChanges ? 'Changes detected' : 'No changes'}</p>
+	<div class="diff-content">
+		<pre>${diffContent}</pre>
+	</div>
+</body>
+</html>
+	`;
+
+	return { hasChanges, htmlDiffTemplate };
 }
 
 // Function to generate index.html for a property
@@ -133,9 +188,11 @@ function generatePropertyIndex(property, reports) {
 			<tr>
 				<th>URL</th>
 				<th>Viewport</th>
-				<th>Difference</th>
+				<th>Visual Difference</th>
+				<th>HTML Changes</th>
 				<th>Report</th>
-				<th>Diff</th>
+				<th>Visual Diff</th>
+				<th>HTML Diff</th>
 			</tr>
 		</thead>
 		<tbody>
@@ -150,21 +207,26 @@ function generatePropertyIndex(property, reports) {
 		urlKey: Object.entries(urls).find(([_, url]) => url === report.url)?.[0] || 'unknown',
 		viewport: report.viewport,
 		diffUrl: report.diffUrl,
-		diffPercentage: report.diffPercentage
+		htmlDiffUrl: report.htmlDiffUrl,
+		diffPercentage: report.diffPercentage,
+		htmlHasChanges: report.htmlHasChanges
 	}));
 
 	for (const [index, report] of reports.entries()) {
 		const urlKey = Object.entries(urls).find(([_, url]) => url === report.url)?.[0] || 'unknown';
 		const diffClass = report.diffPercentage > 1 ? 'high' :
 			report.diffPercentage > 0.1 ? 'medium' : 'low';
+		const htmlDiffClass = report.htmlHasChanges ? 'high' : 'low';
 
 		indexContent += `
 			<tr>
 				<td>${report.url}</td>
 				<td>${report.viewport.name} (${report.viewport.width}x${report.viewport.height})</td>
 				<td class="diff-percentage ${diffClass}">${report.diffPercentage.toFixed(2)}%</td>
+				<td class="diff-percentage ${htmlDiffClass}">${report.htmlHasChanges ? 'Yes' : 'No'}</td>
 				<td><a href="${report.reportUrl}">View Report</a></td>
 				<td><a href="#" onclick="openModal(window.diffData, ${index}); return false;">View Diff</a></td>
+				<td><a href="${report.htmlDiffUrl}">View HTML Diff</a></td>
 			</tr>
 		`;
 	}
@@ -275,6 +337,8 @@ async function sha256(str) {
 async function compareSlug(slug) {
 	const image1 = path.join('controls', `${slug}.png`);
 	const image2 = path.join('captures', `${slug}.png`);
+	const html1 = path.join('controls', 'html', `${slug}.html`);
+	const html2 = path.join('captures', 'html', `${slug}.html`);
 
 	if (!fs.existsSync(image1) || !fs.existsSync(image2)) {
 		console.error(`One or both images do not exist for slug: ${slug}`);
@@ -348,11 +412,25 @@ async function compareSlug(slug) {
 	const diffPath = path.join(comparesDir, `${slug}-diff.png`);
 	fs.writeFileSync(diffPath, PNG.sync.write(diff));
 
+	// Compare HTML content
+	let htmlDiffResult = { hasChanges: false, htmlDiffTemplate: '' };
+	if (fs.existsSync(html1) && fs.existsSync(html2)) {
+		const html1Content = fs.readFileSync(html1, 'utf8');
+		const html2Content = fs.readFileSync(html2, 'utf8');
+		htmlDiffResult = generateHTMLDiffReport(html1Content, html2Content, property, urlKey, viewport);
+	}
+
+	// Save HTML diff report
+	const htmlDiffPath = path.join(comparesDir, `${slug}-html-diff.html`);
+	fs.writeFileSync(htmlDiffPath, htmlDiffResult.htmlDiffTemplate);
+
 	const reportPath = await generateReport(image1, image2, diffPath, property, urlKey, viewport, diffPercentage, pixelmatchOptions);
 	return {
 		reportPath,
 		reportUrl: reportPath.reportUrl,
 		diffUrl: reportPath.diffUrl,
+		htmlDiffUrl: `${reportDomain}/${path.relative(process.cwd(), htmlDiffPath)}`,
+		htmlHasChanges: htmlDiffResult.hasChanges,
 		diffPercentage,
 		numDiffPixels,
 		totalPixels,
