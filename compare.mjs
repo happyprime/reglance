@@ -17,7 +17,7 @@ const defaultPixelmatchOptions = {
 	alpha: 0.1,
 	diffColor: [255, 0, 0], // Red for differences
 	diffColorAlt: [0, 0, 255], // Blue for anti-aliased differences
-	diffMask: false
+	diffMask: false,
 };
 
 // Get command line arguments
@@ -33,22 +33,35 @@ if (!input) {
 }
 
 // Function to check if input is a property key
+/**
+ *
+ * @param input
+ */
 function isPropertyKey(input) {
 	return config[input] !== undefined;
 }
 
 // Function to get viewports for a property, falling back to defaults
+/**
+ *
+ * @param property
+ */
 function getViewports(property) {
 	return config[property]?.viewports || config.defaults.viewports;
 }
 
 // Function to compare HTML content
+/**
+ *
+ * @param html1
+ * @param html2
+ */
 function compareHTML(html1, html2) {
 	const changes = diffLines(html1, html2);
 	let hasChanges = false;
 	let diffContent = '';
 
-	changes.forEach(part => {
+	changes.forEach((part) => {
 		if (part.added) {
 			hasChanges = true;
 			diffContent += `<div class="diff-added">${part.value}</div>`;
@@ -64,7 +77,21 @@ function compareHTML(html1, html2) {
 }
 
 // Function to generate HTML diff report
-function generateHTMLDiffReport(originalHTML, secondHTML, property, urlKey, viewport) {
+/**
+ *
+ * @param originalHTML
+ * @param secondHTML
+ * @param property
+ * @param urlKey
+ * @param viewport
+ */
+function generateHTMLDiffReport(
+	originalHTML,
+	secondHTML,
+	property,
+	urlKey,
+	viewport
+) {
 	const { hasChanges, diffContent } = compareHTML(originalHTML, secondHTML);
 
 	const htmlDiffTemplate = `
@@ -97,6 +124,11 @@ function generateHTMLDiffReport(originalHTML, secondHTML, property, urlKey, view
 }
 
 // Function to generate index.html for a property
+/**
+ *
+ * @param property
+ * @param reports
+ */
 function generatePropertyIndex(property, reports) {
 	const viewports = getViewports(property);
 	const urls = config[property].urls;
@@ -105,7 +137,8 @@ function generatePropertyIndex(property, reports) {
 	const diffViewerTemplate = fs.readFileSync('diff-viewer.html', 'utf8');
 
 	// Get the pixelmatch options for this property
-	const pixelmatchOptions = config[property]?.pixelmatchOptions || defaultPixelmatchOptions;
+	const pixelmatchOptions =
+		config[property]?.pixelmatchOptions || defaultPixelmatchOptions;
 
 	let indexContent = `
 <!DOCTYPE html>
@@ -202,20 +235,28 @@ function generatePropertyIndex(property, reports) {
 	reports.sort((a, b) => b.diffPercentage - a.diffPercentage);
 
 	// Prepare diff data for JavaScript
-	const diffData = reports.map(report => ({
+	const diffData = reports.map((report) => ({
 		property: property,
-		urlKey: Object.entries(urls).find(([_, url]) => url === report.url)?.[0] || 'unknown',
+		urlKey:
+			Object.entries(urls).find(([_, url]) => url === report.url)?.[0] ||
+			'unknown',
 		viewport: report.viewport,
 		diffUrl: report.diffUrl,
 		htmlDiffUrl: report.htmlDiffUrl,
 		diffPercentage: report.diffPercentage,
-		htmlHasChanges: report.htmlHasChanges
+		htmlHasChanges: report.htmlHasChanges,
 	}));
 
 	for (const [index, report] of reports.entries()) {
-		const urlKey = Object.entries(urls).find(([_, url]) => url === report.url)?.[0] || 'unknown';
-		const diffClass = report.diffPercentage > 1 ? 'high' :
-			report.diffPercentage > 0.1 ? 'medium' : 'low';
+		const urlKey =
+			Object.entries(urls).find(([_, url]) => url === report.url)?.[0] ||
+			'unknown';
+		const diffClass =
+			report.diffPercentage > 1
+				? 'high'
+				: report.diffPercentage > 0.1
+					? 'medium'
+					: 'low';
 		const htmlDiffClass = report.htmlHasChanges ? 'high' : 'low';
 
 		indexContent += `
@@ -246,6 +287,11 @@ function generatePropertyIndex(property, reports) {
 }
 
 // Function to pad an image to a specific height
+/**
+ *
+ * @param img
+ * @param targetHeight
+ */
 function padImage(img, targetHeight) {
 	const paddedImg = new PNG({ width: img.width, height: targetHeight });
 	PNG.bitblt(img, paddedImg, 0, 0, img.width, img.height, 0, 0);
@@ -254,17 +300,27 @@ function padImage(img, targetHeight) {
 
 /**
  * Generate a report for a comparison
+ *
  * @param {string} originalPath - Path to the original image
  * @param {string} secondPath - Path to the second image
  * @param {string} diffPath - Path to the diff image
  * @param {string} property - The property key
  * @param {string} urlKey - The URL key
- * @param {Object} viewport - The viewport configuration
+ * @param {object} viewport - The viewport configuration
  * @param {number} diffPercentage - The percentage of pixels that differ
- * @param {Object} pixelmatchOptions - The options used for pixelmatch
+ * @param {object} pixelmatchOptions - The options used for pixelmatch
  * @returns {Promise<{reportPath: string, reportUrl: string, diffUrl: string}>}
  */
-async function generateReport(originalPath, secondPath, diffPath, property, urlKey, viewport, diffPercentage, pixelmatchOptions) {
+async function generateReport(
+	originalPath,
+	secondPath,
+	diffPath,
+	property,
+	urlKey,
+	viewport,
+	diffPercentage,
+	pixelmatchOptions
+) {
 	// Read the template
 	let template = fs.readFileSync('report.html', 'utf8');
 
@@ -289,9 +345,15 @@ async function generateReport(originalPath, secondPath, diffPath, property, urlK
 	template = template.replaceAll('{diffImage}', relativeDiff);
 
 	// Add diff percentage and options to the template
-	template = template.replaceAll('{diffPercentage}', diffPercentage.toFixed(2));
+	template = template.replaceAll(
+		'{diffPercentage}',
+		diffPercentage.toFixed(2)
+	);
 	template = template.replaceAll('{threshold}', pixelmatchOptions.threshold);
-	template = template.replaceAll('{includeAA}', pixelmatchOptions.includeAA ? 'Yes' : 'No');
+	template = template.replaceAll(
+		'{includeAA}',
+		pixelmatchOptions.includeAA ? 'Yes' : 'No'
+	);
 	template = template.replaceAll('{alpha}', pixelmatchOptions.alpha);
 
 	// Create a more unique filename
@@ -310,6 +372,7 @@ async function generateReport(originalPath, secondPath, diffPath, property, urlK
 
 /**
  * Get the basename of a filepath
+ *
  * @param {string} filepath - The filepath to process
  * @returns {string} The basename without extension
  */
@@ -322,6 +385,7 @@ function getBasename(filepath) {
 
 /**
  * Generate a SHA-256 hash of a string
+ *
  * @param {string} str - The string to hash
  * @returns {Promise<string>} The hexadecimal hash
  */
@@ -334,6 +398,10 @@ async function sha256(str) {
 }
 
 // Function to compare a single slug
+/**
+ *
+ * @param slug
+ */
 async function compareSlug(slug) {
 	const image1 = path.join('controls', `${slug}.png`);
 	const image2 = path.join('captures', `${slug}.png`);
@@ -369,7 +437,7 @@ async function compareSlug(slug) {
 	const propertyConfig = config[property] || {};
 	const pixelmatchOptions = {
 		...defaultPixelmatchOptions,
-		...propertyConfig.pixelmatchOptions
+		...propertyConfig.pixelmatchOptions,
 	};
 
 	const numDiffPixels = pixelmatch(
@@ -392,20 +460,32 @@ async function compareSlug(slug) {
 	// Find the viewport configuration
 	let viewport = null;
 	if (config[property]?.viewports) {
-		viewport = config[property].viewports.find(v => v.name === viewportName);
+		viewport = config[property].viewports.find(
+			(v) => v.name === viewportName
+		);
 	}
 
 	if (!viewport && config.defaults.viewports) {
-		viewport = config.defaults.viewports.find(v => v.name === viewportName);
+		viewport = config.defaults.viewports.find(
+			(v) => v.name === viewportName
+		);
 	}
 
 	if (!viewport) {
-		console.error(`Could not find viewport configuration for ${viewportName} in property ${property}`);
+		console.error(
+			`Could not find viewport configuration for ${viewportName} in property ${property}`
+		);
 		console.error('Available viewports:');
 		if (config[property]?.viewports) {
-			console.error(`Property ${property} viewports:`, config[property].viewports.map(v => v.name));
+			console.error(
+				`Property ${property} viewports:`,
+				config[property].viewports.map((v) => v.name)
+			);
 		}
-		console.error('Default viewports:', config.defaults.viewports.map(v => v.name));
+		console.error(
+			'Default viewports:',
+			config.defaults.viewports.map((v) => v.name)
+		);
 		return null;
 	}
 
@@ -417,14 +497,29 @@ async function compareSlug(slug) {
 	if (fs.existsSync(html1) && fs.existsSync(html2)) {
 		const html1Content = fs.readFileSync(html1, 'utf8');
 		const html2Content = fs.readFileSync(html2, 'utf8');
-		htmlDiffResult = generateHTMLDiffReport(html1Content, html2Content, property, urlKey, viewport);
+		htmlDiffResult = generateHTMLDiffReport(
+			html1Content,
+			html2Content,
+			property,
+			urlKey,
+			viewport
+		);
 	}
 
 	// Save HTML diff report
 	const htmlDiffPath = path.join(comparesDir, `${slug}-html-diff.html`);
 	fs.writeFileSync(htmlDiffPath, htmlDiffResult.htmlDiffTemplate);
 
-	const reportPath = await generateReport(image1, image2, diffPath, property, urlKey, viewport, diffPercentage, pixelmatchOptions);
+	const reportPath = await generateReport(
+		image1,
+		image2,
+		diffPath,
+		property,
+		urlKey,
+		viewport,
+		diffPercentage,
+		pixelmatchOptions
+	);
 	return {
 		reportPath,
 		reportUrl: reportPath.reportUrl,
@@ -434,11 +529,15 @@ async function compareSlug(slug) {
 		diffPercentage,
 		numDiffPixels,
 		totalPixels,
-		pixelmatchOptions
+		pixelmatchOptions,
 	};
 }
 
 // Function to compare all URLs for a property
+/**
+ *
+ * @param property
+ */
 async function compareProperty(property) {
 	const propertyConfig = config[property];
 	if (!propertyConfig || !propertyConfig.urls) {
@@ -447,7 +546,10 @@ async function compareProperty(property) {
 	}
 
 	const viewports = getViewports(property);
-	console.log(`Using viewports for ${property}:`, viewports.map(v => v.name));
+	console.log(
+		`Using viewports for ${property}:`,
+		viewports.map((v) => v.name)
+	);
 
 	const reports = [];
 
@@ -471,7 +573,7 @@ async function compareProperty(property) {
 				reports.push({
 					url: url,
 					viewport: viewport,
-					...result
+					...result,
 				});
 			}
 		}
@@ -491,6 +593,9 @@ async function compareProperty(property) {
 }
 
 // Main function
+/**
+ *
+ */
 async function main() {
 	if (isPropertyKey(input)) {
 		await compareProperty(input);

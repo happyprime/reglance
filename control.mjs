@@ -21,7 +21,7 @@ if (!fs.existsSync(htmlControlsDir)) {
  * @param {string} propertyKey - The property key from config
  * @param {string} urlKey - The URL key from config
  * @param {string} viewport - The viewport name
- * @returns {Object} - Paths to the most recent matching files or null if none found
+ * @returns {object} - Paths to the most recent matching files or null if none found
  */
 function findLatestCapture(propertyKey, urlKey, viewport) {
 	if (!fs.existsSync(capturesDir)) {
@@ -49,7 +49,7 @@ function findLatestCapture(propertyKey, urlKey, viewport) {
 
 	return {
 		image: path.join(capturesDir, latestFile),
-		html: path.join(capturesDir, 'html', htmlFile)
+		html: path.join(capturesDir, 'html', htmlFile),
 	};
 }
 
@@ -91,13 +91,19 @@ function processUrl(propertyKey, urlKey) {
 
 		if (latestCapture) {
 			// Move image file
-			const imageDest = path.join(controlsDir, path.basename(latestCapture.image));
+			const imageDest = path.join(
+				controlsDir,
+				path.basename(latestCapture.image)
+			);
 			fs.renameSync(latestCapture.image, imageDest);
 			console.log(`Moved ${latestCapture.image} to ${imageDest}`);
 
 			// Move HTML file if it exists
 			if (fs.existsSync(latestCapture.html)) {
-				const htmlDest = path.join(htmlControlsDir, path.basename(latestCapture.html));
+				const htmlDest = path.join(
+					htmlControlsDir,
+					path.basename(latestCapture.html)
+				);
 				fs.renameSync(latestCapture.html, htmlDest);
 				console.log(`Moved ${latestCapture.html} to ${htmlDest}`);
 			}
