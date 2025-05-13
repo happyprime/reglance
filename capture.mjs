@@ -59,7 +59,10 @@ async function captureFullPageScreenshot(
 		});
 
 		// Capture HTML content
-		const htmlPath = path.join(htmlCapturesDir, path.basename(outputPath).replace('.png', '.html'));
+		const htmlPath = path.join(
+			htmlCapturesDir,
+			path.basename(outputPath).replace('.png', '.html')
+		);
 		const htmlContent = await page.content();
 		fs.writeFileSync(htmlPath, htmlContent);
 
