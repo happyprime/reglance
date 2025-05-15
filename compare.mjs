@@ -50,6 +50,20 @@ function getViewports(property) {
 	return config[property]?.viewports || config.defaults.viewports;
 }
 
+// Function to escape HTML special characters
+/**
+ * @param {string} str - The string to escape
+ * @returns {string} The escaped string
+ */
+function escapeHtml(str) {
+	return str
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&#039;');
+}
+
 // Function to compare HTML content
 /**
  *
@@ -64,12 +78,12 @@ function compareHTML(html1, html2) {
 	changes.forEach((part) => {
 		if (part.added) {
 			hasChanges = true;
-			diffContent += `<div class="diff-added">${part.value}</div>`;
+			diffContent += `<div class="diff-added"><span class="line-number">+</span><span class="line-content">${escapeHtml(part.value)}</span></div>`;
 		} else if (part.removed) {
 			hasChanges = true;
-			diffContent += `<div class="diff-removed">${part.value}</div>`;
+			diffContent += `<div class="diff-removed"><span class="line-number">-</span><span class="line-content">${escapeHtml(part.value)}</span></div>`;
 		} else {
-			diffContent += `<div class="diff-unchanged">${part.value}</div>`;
+			diffContent += `<div class="diff-unchanged"><span class="line-number"> </span><span class="line-content">${escapeHtml(part.value)}</span></div>`;
 		}
 	});
 
@@ -100,11 +114,28 @@ function generateHTMLDiffReport(
 <head>
 	<title>HTML Diff - ${property} - ${urlKey} - ${viewport.name}</title>
 	<style>
-		body { font-family: monospace; margin: 2rem; }
+		body { font-family: 'Menlo', 'Monaco', 'Courier New', monospace; margin: 2rem; line-height: 1.5; }
+		.diff-content { background: #f8f8f8; padding: 1rem; border-radius: 4px; overflow-x: auto; }
 		.diff-added { background-color: #e6ffec; }
 		.diff-removed { background-color: #ffeef0; }
 		.diff-unchanged { color: #666; }
-		pre { margin: 0; white-space: pre-wrap; }
+		.line-number {
+			display: inline-block;
+			width: 2rem;
+			text-align: center;
+			color: #999;
+			user-select: none;
+		}
+		.line-content {
+			display: inline-block;
+			white-space: pre;
+			tab-size: 4;
+		}
+		pre { margin: 0; }
+		.tag { color: #22863a; }
+		.attr { color: #6f42c1; }
+		.string { color: #032f62; }
+		.comment { color: #6a737d; }
 	</style>
 </head>
 <body>
