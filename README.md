@@ -1,16 +1,24 @@
 # Reglance
 
-Visual regression at a glance.
+Visual regression testing at a glance - capture, compare, and control screenshots for web development.
 
 ## Installation
 
+Install globally:
+
 ```bash
-npm install
+npm install -g reglance
+```
+
+Or use with npx:
+
+```bash
+npx reglance <command>
 ```
 
 ## Configuration
 
-Reglance is configured via the `config.json` file.
+Reglance is configured via the `config.json` file in your project root.
 
 ```json
 {
@@ -21,7 +29,8 @@ Reglance is configured via the `config.json` file.
 				"width": 1920,
 				"height": 1080
 			}
-		]
+		],
+		"report_domain": "http://localhost:8080"
 	},
 	"example": {
 		"urls": {
@@ -35,30 +44,63 @@ Reglance is configured via the `config.json` file.
 
 ## Usage
 
-```bash
-npm run capture <property>
-```
+### Capture Screenshots
 
-Capture will visit each of the URLs and viewports attached to a property and save full page screenshots
-to the `captures` directory.
+Capture screenshots for all URLs in a property:
 
 ```bash
-npm run control <property>
+reglance capture <property>
+# Example: reglance capture example
 ```
 
-Control will move all of the current captures into the `controls` directory to be used as a baseline for
-comparison with future captures.
+### Set Control Images
+
+Move current captures to controls directory for baseline comparison:
 
 ```bash
-npm run compare <property>
+reglance control <property> [url]
+# Example: reglance control example
+# Example: reglance control example home
 ```
 
-Compare will compare the latest captures from a property, compare them with the property's controls, and
-generate reports in the `reports` directory.
+### Compare Images
+
+Compare latest captures with controls and generate reports:
+
+```bash
+reglance compare <slug|property>
+# Example: reglance compare example
+# Example: reglance compare example-home-desktop
+```
+
+## CLI Commands
+
+- `reglance capture <property>` - Capture screenshots for all URLs in a property
+- `reglance compare <slug|property>` - Compare captured images with controls  
+- `reglance control <property> [url]` - Set current captures as controls
+
+## Using as a Library
+
+You can also import and use reglance functions directly:
+
+```javascript
+import { captureProperty, compareProperty, setControls, loadConfig } from 'reglance';
+
+const config = loadConfig('./config.json');
+
+// Capture screenshots
+await captureProperty('example', config);
+
+// Set controls
+setControls('example', null, config);
+
+// Compare and generate reports
+await compareProperty('example', config);
+```
 
 ## Directories
 
-- `captures`: The latest captures for a property
-- `controls`: The control captures used for comparison.
-- `compares`: The latest comparisons.
-- `reports`: The latest reports.
+- `captures/` - Latest captured screenshots
+- `controls/` - Baseline images for comparison  
+- `compares/` - Generated diff images
+- `reports/` - HTML comparison reports
