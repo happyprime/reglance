@@ -1,6 +1,6 @@
 # Reglance
 
-Visual regression testing at a glance - capture, compare, and control screenshots for web development.
+Visual regression at a glance.
 
 ## Installation
 
