@@ -23,6 +23,7 @@
 		"lib/",
 		"report.html",
 		"diff-viewer.html",
+		"config.json.example",
 		"README.md"
 	],
 	"repository": {

@@ -1,0 +1,29 @@
+{
+	"defaults": {
+		"viewports": [
+			{
+				"name": "desktop",
+				"width": 1920,
+				"height": 1080
+			},
+			{
+				"name": "tablet",
+				"width": 768,
+				"height": 1024
+			},
+			{
+				"name": "mobile",
+				"width": 375,
+				"height": 667
+			}
+		],
+		"report_domain": "http://localhost:8080"
+	},
+	"example": {
+		"urls": {
+			"home": "https://example.com",
+			"blog": "https://example.com/blog",
+			"single-post": "https://example.com/blog/sample-post"
+		}
+	}
+}

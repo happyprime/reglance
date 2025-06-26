@@ -18,7 +18,13 @@ npx reglance <command>
 
 ## Configuration
 
-Reglance is configured via the `config.json` file in your project root.
+Reglance is configured via the `config.json` file in your project root. You can copy the example configuration to get started:
+
+```bash
+cp config.json.example config.json
+```
+
+Example configuration:
 
 ```json
 {
@@ -28,15 +34,25 @@ Reglance is configured via the `config.json` file in your project root.
 				"name": "desktop",
 				"width": 1920,
 				"height": 1080
+			},
+			{
+				"name": "tablet",
+				"width": 768,
+				"height": 1024
+			},
+			{
+				"name": "mobile",
+				"width": 375,
+				"height": 667
 			}
 		],
 		"report_domain": "http://localhost:8080"
 	},
 	"example": {
 		"urls": {
-			"home": "https://example.test",
-			"blog": "https://example.test/blog",
-			"single-post": "https://example.test/blog/single-post"
+			"home": "https://example.com",
+			"blog": "https://example.com/blog",
+			"single-post": "https://example.com/blog/sample-post"
 		}
 	}
 }
