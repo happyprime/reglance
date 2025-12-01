@@ -9,7 +9,7 @@
 		"diff": "^8.0.2",
 		"open": "^10.2.0",
 		"pixelmatch": "^7.1.0",
-		"playwright": "^1.55.0"
+		"playwright": "^1.57.0"
 	},
 	"devDependencies": {
 		"@happyprime/eslint-config": "^0.0.14"
