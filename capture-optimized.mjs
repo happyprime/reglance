@@ -17,6 +17,7 @@ if (!fs.existsSync(htmlCapturesDir)) {
 
 /**
  * Wait for network to be idle with custom timeout
+ *
  * @param page
  * @param idleTime - Time in ms to wait for no network activity
  * @param maxWaitTime - Maximum time to wait in ms
@@ -44,7 +45,10 @@ async function waitForNetworkIdle(page, idleTime = 500, maxWaitTime = 3000) {
 	try {
 		// Wait until network is idle or max time is reached
 		while (Date.now() - startTime < maxWaitTime) {
-			if (pendingRequests === 0 && Date.now() - lastRequestTime >= idleTime) {
+			if (
+				pendingRequests === 0 &&
+				Date.now() - lastRequestTime >= idleTime
+			) {
 				console.log(`Network idle after ${Date.now() - startTime}ms`);
 				break;
 			}
@@ -52,7 +56,9 @@ async function waitForNetworkIdle(page, idleTime = 500, maxWaitTime = 3000) {
 		}
 
 		if (Date.now() - startTime >= maxWaitTime) {
-			console.log(`Max wait time (${maxWaitTime}ms) reached, continuing...`);
+			console.log(
+				`Max wait time (${maxWaitTime}ms) reached, continuing...`
+			);
 		}
 	} finally {
 		page.off('request', onRequest);
@@ -63,6 +69,7 @@ async function waitForNetworkIdle(page, idleTime = 500, maxWaitTime = 3000) {
 
 /**
  * Auto scroll through the page
+ *
  * @param page
  */
 async function autoScroll(page) {
@@ -87,6 +94,7 @@ async function autoScroll(page) {
 
 /**
  * Capture screenshots for a single URL across all viewports
+ *
  * @param browser
  * @param url
  * @param urlKey
@@ -95,16 +103,29 @@ async function autoScroll(page) {
  * @param skipReload - Skip page reload between viewport changes
  * @param retryCount - Number of retries for failed page loads
  */
-async function captureUrlAllViewports(browser, url, urlKey, propertyKey, viewports, skipReload = false, retryCount = 2) {
+async function captureUrlAllViewports(
+	browser,
+	url,
+	urlKey,
+	propertyKey,
+	viewports,
+	skipReload = false,
+	retryCount = 2
+) {
 	const context = await browser.newContext();
 	const page = await context.newPage();
 
 	// Track failed CSS loads
 	const failedResources = new Set();
-	page.on('requestfailed', request => {
-		if (request.resourceType() === 'stylesheet' || request.resourceType() === 'script') {
+	page.on('requestfailed', (request) => {
+		if (
+			request.resourceType() === 'stylesheet' ||
+			request.resourceType() === 'script'
+		) {
 			failedResources.add(request.url());
-			console.warn(`⚠️  Failed to load ${request.resourceType()}: ${request.url()}`);
+			console.warn(
+				`⚠️  Failed to load ${request.resourceType()}: ${request.url()}`
+			);
 		}
 	});
 
@@ -116,7 +137,9 @@ async function captureUrlAllViewports(browser, url, urlKey, propertyKey, viewpor
 				`${propertyKey}-${urlKey}-${viewport.name}.png`
 			);
 
-			console.log(`Capturing ${propertyKey}-${urlKey}-${viewport.name}...`);
+			console.log(
+				`Capturing ${propertyKey}-${urlKey}-${viewport.name}...`
+			);
 
 			// Set viewport
 			await page.setViewportSize({
@@ -153,9 +176,13 @@ async function captureUrlAllViewports(browser, url, urlKey, propertyKey, viewpor
 
 						// Check if critical resources loaded
 						if (failedResources.size > 0) {
-							console.warn(`  ⚠️  ${failedResources.size} resources failed to load`);
+							console.warn(
+								`  ⚠️  ${failedResources.size} resources failed to load`
+							);
 							if (attempts < retryCount) {
-								throw new Error('Critical resources failed to load');
+								throw new Error(
+									'Critical resources failed to load'
+								);
 							}
 						}
 
@@ -166,7 +193,9 @@ async function captureUrlAllViewports(browser, url, urlKey, propertyKey, viewpor
 				} catch (error) {
 					attempts++;
 					if (attempts > retryCount) {
-						console.log(`  Network timeout after ${retryCount + 1} attempts, continuing anyway...`);
+						console.log(
+							`  Network timeout after ${retryCount + 1} attempts, continuing anyway...`
+						);
 						success = true; // Continue anyway after all retries
 					}
 				}
@@ -203,6 +232,7 @@ async function captureUrlAllViewports(browser, url, urlKey, propertyKey, viewpor
 
 /**
  * Process URLs in parallel batches
+ *
  * @param urls - Array of {key, url} objects
  * @param propertyKey
  * @param viewports
@@ -210,7 +240,14 @@ async function captureUrlAllViewports(browser, url, urlKey, propertyKey, viewpor
  * @param skipReload - Skip page reload between viewport changes
  * @param staggerDelay - Delay in ms between starting each context
  */
-async function processUrlsInParallel(urls, propertyKey, viewports, concurrency = 4, skipReload = false, staggerDelay = 500) {
+async function processUrlsInParallel(
+	urls,
+	propertyKey,
+	viewports,
+	concurrency = 4,
+	skipReload = false,
+	staggerDelay = 500
+) {
 	const browser = await chromium.launch({
 		args: ['--ignore-certificate-errors'],
 		ignoreHTTPSErrors: true,
@@ -222,20 +259,35 @@ async function processUrlsInParallel(urls, propertyKey, viewports, concurrency =
 			const batch = urls.slice(i, i + concurrency);
 			const promises = [];
 
-			console.log(`Processing batch ${Math.floor(i / concurrency) + 1} of ${Math.ceil(urls.length / concurrency)}`);
+			console.log(
+				`Processing batch ${Math.floor(i / concurrency) + 1} of ${Math.ceil(urls.length / concurrency)}`
+			);
 
 			// Start each context with stagger delay to avoid overwhelming server
 			for (let j = 0; j < batch.length; j++) {
 				const { key, url } = batch[j];
 
-				promises.push((async () => {
-					// Stagger the start to reduce server load spike
-					if (staggerDelay > 0 && j > 0) {
-						await new Promise(resolve => setTimeout(resolve, j * staggerDelay));
-						console.log(`  Starting ${key} after ${j * staggerDelay}ms delay...`);
-					}
-					return captureUrlAllViewports(browser, url, key, propertyKey, viewports, skipReload);
-				})());
+				promises.push(
+					(async () => {
+						// Stagger the start to reduce server load spike
+						if (staggerDelay > 0 && j > 0) {
+							await new Promise((resolve) =>
+								setTimeout(resolve, j * staggerDelay)
+							);
+							console.log(
+								`  Starting ${key} after ${j * staggerDelay}ms delay...`
+							);
+						}
+						return captureUrlAllViewports(
+							browser,
+							url,
+							key,
+							propertyKey,
+							viewports,
+							skipReload
+						);
+					})()
+				);
 			}
 
 			await Promise.all(promises);
@@ -247,6 +299,7 @@ async function processUrlsInParallel(urls, propertyKey, viewports, concurrency =
 
 /**
  * Generate fileName
+ *
  * @param propertyKey
  * @param urlKey
  * @param viewportName
@@ -257,6 +310,7 @@ function generateFileName(propertyKey, urlKey, viewportName) {
 
 /**
  * Capture all URLs for a property
+ *
  * @param propertyKey
  * @param options
  */
@@ -282,8 +336,12 @@ async function captureProperty(propertyKey, options = {}) {
 
 	// Warn if high concurrency with many resources
 	if (recommendedConcurrency >= 8 && totalResources > 50) {
-		console.log(`⚠️  Warning: High concurrency (${recommendedConcurrency}) with ${totalResources} total captures`);
-		console.log(`   May cause resource loading issues. Consider using --concurrency 4 or 6`);
+		console.log(
+			`⚠️  Warning: High concurrency (${recommendedConcurrency}) with ${totalResources} total captures`
+		);
+		console.log(
+			`   May cause resource loading issues. Consider using --concurrency 4 or 6`
+		);
 	}
 
 	console.log(`Starting capture for ${propertyKey}`);
@@ -295,7 +353,9 @@ async function captureProperty(propertyKey, options = {}) {
 		console.log('Skip reload between viewports: enabled');
 	}
 	if (options.staggerDelay !== undefined) {
-		console.log(`Stagger delay: ${options.staggerDelay}ms between context starts`);
+		console.log(
+			`Stagger delay: ${options.staggerDelay}ms between context starts`
+		);
 	}
 
 	const startTime = Date.now();
@@ -310,7 +370,9 @@ async function captureProperty(propertyKey, options = {}) {
 	);
 
 	const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-	console.log(`\n✅ Capture complete for ${propertyKey} in ${duration} seconds`);
+	console.log(
+		`\n✅ Capture complete for ${propertyKey} in ${duration} seconds`
+	);
 }
 
 /**
@@ -358,19 +420,31 @@ if (!propertyKey) {
 	console.error('Please provide a property key.');
 	console.error('Usage: node capture-optimized.mjs <property_key> [options]');
 	console.error('Options:');
-	console.error('  --concurrency, -c <number>  Number of parallel browser contexts (default: 4)');
-	console.error('  --stagger, -s <ms>         Delay between starting contexts (default: 500ms)');
-	console.error('  --skip-reload, --no-reload  Skip page reload between viewport changes');
+	console.error(
+		'  --concurrency, -c <number>  Number of parallel browser contexts (default: 4)'
+	);
+	console.error(
+		'  --stagger, -s <ms>         Delay between starting contexts (default: 500ms)'
+	);
+	console.error(
+		'  --skip-reload, --no-reload  Skip page reload between viewport changes'
+	);
 	console.error('');
 	console.error('Examples:');
 	console.error('  node capture-optimized.mjs pinchofyum');
 	console.error('  node capture-optimized.mjs pinchofyum --concurrency 6');
-	console.error('  node capture-optimized.mjs pinchofyum -c 8 --stagger 1000');
+	console.error(
+		'  node capture-optimized.mjs pinchofyum -c 8 --stagger 1000'
+	);
 	console.error('');
 	console.error('Recommended settings:');
 	console.error('  Small properties (<10 URLs):    --concurrency 4-6');
-	console.error('  Medium properties (10-20 URLs): --concurrency 4 --stagger 500');
-	console.error('  Large properties (20+ URLs):    --concurrency 4 --stagger 1000');
+	console.error(
+		'  Medium properties (10-20 URLs): --concurrency 4 --stagger 500'
+	);
+	console.error(
+		'  Large properties (20+ URLs):    --concurrency 4 --stagger 1000'
+	);
 	process.exit(1);
 }
 

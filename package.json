@@ -12,7 +12,7 @@
 		"playwright": "^1.58.2"
 	},
 	"devDependencies": {
-		"@happyprime/eslint-config": "^0.0.14"
+		"@happyprime/eslint-config": "^1.0.0"
 	},
 	"scripts": {
 		"lint": "eslint .",

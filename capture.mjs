@@ -43,12 +43,12 @@ async function captureFullPageScreenshot(
 
 		try {
 			await page.goto(url, {
-			  waitUntil: 'networkidle',
-			  timeout: 10000,
+				waitUntil: 'networkidle',
+				timeout: 10000,
 			});
-		  } catch (error) {
+		} catch (error) {
 			console.log('Network idle timeout, taking screenshot anyway');
-		  }
+		}
 
 		// Scroll to bottom and back up
 		await autoScroll(page);
