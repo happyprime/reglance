@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { PNG } from 'pngjs';
 import { loadConfig } from '../src/config.mjs';
-import { padImage, compareSlug } from '../src/compare.mjs';
+import { padImage, compareSlug, compare } from '../src/compare.mjs';
 
 /**
  * Build a solid-color PNG.
@@ -142,4 +142,28 @@ test('compareSlug reports a width mismatch as a large diff, not a drop', () => {
 	assert.notEqual(result, null);
 	assert.ok(result.diffPercentage > 0);
 	assert.ok(fs.existsSync(result.diffImage));
+});
+
+test('compare runs every slug through the worker pool and builds the index', async () => {
+	const config = tempConfig();
+	const { dirs } = config;
+
+	// Two viewports (desktop, mobile) for the single home path.
+	for (const slug of ['home-desktop', 'home-mobile']) {
+		fs.writeFileSync(
+			path.join(dirs.controls, `${slug}.png`),
+			PNG.sync.write(solidPng(10, 10, [0, 0, 0, 255]))
+		);
+		fs.writeFileSync(
+			path.join(dirs.captures, `${slug}.png`),
+			PNG.sync.write(solidPng(10, 10, [255, 255, 255, 255]))
+		);
+	}
+
+	await compare(config, { open: false, concurrency: 2 });
+
+	// The index and a per-slug diff image for both slugs are produced.
+	assert.ok(fs.existsSync(path.join(dirs.reports, 'index.html')));
+	assert.ok(fs.existsSync(path.join(dirs.compares, 'home-desktop-diff.png')));
+	assert.ok(fs.existsSync(path.join(dirs.compares, 'home-mobile-diff.png')));
 });

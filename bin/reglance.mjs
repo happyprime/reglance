@@ -28,6 +28,8 @@ Options:
   --stagger=<ms>      Delay between starting capture contexts (default: 500).
   --skip-reload       Reuse the page between viewports during capture.
   --fail-on-degraded  Exit non-zero if any capture failed to load cleanly.
+  --compare-concurrency=<n>  Parallel diff workers for compare
+                      (default: CPU count - 1; lower it for very tall pages).
   --no-open           Don't open the report automatically after compare.
   -h, --help          Show this help.
 
@@ -46,6 +48,7 @@ const { values, positionals } = parseArgs({
 		stagger: { type: 'string' },
 		'skip-reload': { type: 'boolean' },
 		'fail-on-degraded': { type: 'boolean' },
+		'compare-concurrency': { type: 'string' },
 		'no-open': { type: 'boolean' },
 		help: { type: 'boolean', short: 'h' },
 	},
@@ -95,7 +98,16 @@ async function main() {
 			break;
 
 		case 'compare':
-			await compare(config, { only, open: !values['no-open'] });
+			await compare(config, {
+				only,
+				open: !values['no-open'],
+				concurrency: values['compare-concurrency']
+					? toInt(
+							values['compare-concurrency'],
+							'compare-concurrency'
+						)
+					: undefined,
+			});
 			break;
 
 		default:
