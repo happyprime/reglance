@@ -89,7 +89,11 @@ test('compareSlug reports zero difference for identical images', () => {
 
 	const result = compareSlug(config, TARGET, VIEWPORT);
 	assert.equal(result.diffPercentage, 0);
+	// Assert the side-effect artifacts are actually written, not just returned.
 	assert.ok(fs.existsSync(result.diffImage));
+	assert.ok(fs.existsSync(result.htmlDiffPath));
+	assert.ok(fs.existsSync(result.reportPath));
+	assert.equal(path.basename(result.reportPath), 'home-desktop-compare.html');
 });
 
 test('compareSlug reports full difference for opposite images', () => {

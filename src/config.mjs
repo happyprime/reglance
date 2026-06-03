@@ -69,6 +69,55 @@ export function normalizeDomain(domain) {
 	return value;
 }
 
+// Path keys and viewport names become part of output filenames (the
+// `${key}-${viewport}` slug), so they must not contain path separators or
+// traversal sequences that could redirect a write outside the output dir.
+const SAFE_SLUG_PART = /^[a-z0-9][a-z0-9._-]*$/i;
+
+/**
+ * Assert a value is safe to use as part of an output filename.
+ *
+ * @param {string} value - The value to check.
+ * @param {string} kind  - A label for the error message (e.g. "path key").
+ */
+function assertSafeSlugPart(value, kind) {
+	if (
+		typeof value !== 'string' ||
+		!SAFE_SLUG_PART.test(value) ||
+		value.includes('..')
+	) {
+		throw new Error(
+			`❌ Invalid ${kind} ${JSON.stringify(value)}: it becomes part of an ` +
+				'output filename, so use only letters, numbers, dashes, dots, ' +
+				'and underscores (no slashes or "..").'
+		);
+	}
+}
+
+/**
+ * Validate a pixelmatch color option is an [r, g, b] triple of 0–255 integers.
+ *
+ * Without this, a non-array value (e.g. `null`) crashes report generation with
+ * a `.join` TypeError at the very end of a compare run, and a crafted array
+ * would be interpolated into the report's CSS.
+ *
+ * @param {*}      color - The configured color value.
+ * @param {string} name  - The option name, for the error message.
+ */
+function validateColor(color, name) {
+	const valid =
+		Array.isArray(color) &&
+		color.length === 3 &&
+		color.every((n) => Number.isInteger(n) && n >= 0 && n <= 255);
+
+	if (!valid) {
+		throw new Error(
+			`❌ Invalid "pixelmatchOptions.${name}": expected [r, g, b] integers 0–255, ` +
+				`got ${JSON.stringify(color)}.`
+		);
+	}
+}
+
 /**
  * Validate the viewports defined in a config, throwing on the first problem.
  *
@@ -104,6 +153,8 @@ export function validateViewports(viewports) {
 					'💡 Give each viewport a unique name like "desktop" or "mobile".'
 			);
 		}
+
+		assertSafeSlugPart(viewport.name, 'viewport name');
 
 		for (const dimension of ['width', 'height']) {
 			const value = viewport[dimension];
@@ -193,6 +244,10 @@ export function loadConfig({ configPath = 'reglance.json', domain } = {}) {
 		throw new Error('No "paths" configured in reglance.json.');
 	}
 
+	for (const key of Object.keys(raw.paths)) {
+		assertSafeSlugPart(key, 'path key');
+	}
+
 	// The domain is only required for capture; control and compare operate on
 	// already-captured files, so a missing domain is allowed here.
 	const resolvedDomain = domain ?? raw.domain;
@@ -210,16 +265,20 @@ export function loadConfig({ configPath = 'reglance.json', domain } = {}) {
 		url: origin ? buildUrl(origin, pathname) : pathname,
 	}));
 
+	const pixelmatchOptions = {
+		...DEFAULT_PIXELMATCH_OPTIONS,
+		...raw.pixelmatchOptions,
+	};
+	validateColor(pixelmatchOptions.diffColor, 'diffColor');
+	validateColor(pixelmatchOptions.diffColorAlt, 'diffColorAlt');
+
 	return {
 		name: raw.name || (origin ? new URL(origin).host : 'reglance'),
 		domain: origin,
 		outputDir,
 		viewports,
 		targets,
-		pixelmatchOptions: {
-			...DEFAULT_PIXELMATCH_OPTIONS,
-			...raw.pixelmatchOptions,
-		},
+		pixelmatchOptions,
 		timeouts: {
 			...DEFAULT_TIMEOUTS,
 			...raw.timeouts,

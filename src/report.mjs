@@ -4,14 +4,25 @@ import { fileURLToPath } from 'node:url';
 
 const TEMPLATES_DIR = fileURLToPath(new URL('../templates', import.meta.url));
 
+const templateCache = new Map();
+
 /**
  * Read a template file that ships with the package.
+ *
+ * Memoized: templates don't change during a run, and these are read once per
+ * comparison, so caching avoids hundreds of redundant blocking reads (and
+ * filesystem contention once compare is parallelized).
  *
  * @param {string} name - The template filename.
  * @returns {string} The template contents.
  */
 function readTemplate(name) {
-	return fs.readFileSync(path.join(TEMPLATES_DIR, name), 'utf8');
+	let cached = templateCache.get(name);
+	if (cached === undefined) {
+		cached = fs.readFileSync(path.join(TEMPLATES_DIR, name), 'utf8');
+		templateCache.set(name, cached);
+	}
+	return cached;
 }
 
 /**
@@ -32,13 +43,29 @@ export function copyAssets(config) {
  * @param {string} str - The string to escape.
  * @returns {string} The escaped string.
  */
-function escapeHtml(str) {
-	return str
+export function escapeHtml(str) {
+	return String(str)
 		.replace(/&/g, '&amp;')
 		.replace(/</g, '&lt;')
 		.replace(/>/g, '&gt;')
 		.replace(/"/g, '&quot;')
 		.replace(/'/g, '&#039;');
+}
+
+/**
+ * Serialize a value for embedding in an inline <script>.
+ *
+ * JSON.stringify does not neutralize `</script>` or the U+2028/U+2029 line
+ * separators, which can break out of the script element, so escape them.
+ *
+ * @param {*} value - The value to serialize.
+ * @returns {string} Script-safe JSON.
+ */
+function jsonForScript(value) {
+	return JSON.stringify(value)
+		.replace(/</g, '\\u003c')
+		.replace(/\u2028/g, '\\u2028')
+		.replace(/\u2029/g, '\\u2029');
 }
 
 /**
@@ -76,9 +103,9 @@ export function generateHtmlDiff(html1, html2, context, diffLines) {
 
 	const template = readTemplate('html-diff.html');
 	const html = template
-		.replaceAll('{name}', name)
-		.replaceAll('{urlKey}', urlKey)
-		.replaceAll('{viewportName}', viewport.name)
+		.replaceAll('{name}', escapeHtml(name))
+		.replaceAll('{urlKey}', escapeHtml(urlKey))
+		.replaceAll('{viewportName}', escapeHtml(viewport.name))
 		.replaceAll('{viewportWidth}', String(viewport.width))
 		.replaceAll('{viewportHeight}', String(viewport.height))
 		.replaceAll('{status}', hasChanges ? 'Changes detected' : 'No changes')
@@ -110,11 +137,11 @@ export function generateReport(config, report) {
 	const overlayAlt = `Original (control) capture of ${where}`;
 
 	template = template
-		.replaceAll('{name}', name)
+		.replaceAll('{name}', escapeHtml(name))
 		.replaceAll('{baseAlt}', baseAlt)
 		.replaceAll('{overlayAlt}', overlayAlt)
-		.replaceAll('{urlKey}', urlKey)
-		.replaceAll('{viewportName}', viewport.name)
+		.replaceAll('{urlKey}', escapeHtml(urlKey))
+		.replaceAll('{viewportName}', escapeHtml(viewport.name))
 		.replaceAll('{viewportWidth}', String(viewport.width))
 		.replaceAll('{viewportHeight}', String(viewport.height))
 		.replaceAll('{originalImage}', rel(controlImage))
@@ -175,30 +202,32 @@ export function generateIndex(config, reports) {
 						? 'medium'
 						: 'low';
 			const htmlDiffClass = report.htmlHasChanges ? 'high' : 'low';
+			const url = escapeHtml(report.url);
+			const viewportName = escapeHtml(report.viewport.name);
 
 			return `
-			<tr data-url="${report.url}" data-viewport="${report.viewport.name}" data-diff="${report.diffPercentage}" data-index="${index}">
-				<td class="url-cell" title="${report.url}">${report.url}</td>
-				<td>${report.viewport.name} (${report.viewport.width}x${report.viewport.height})</td>
+			<tr data-url="${url}" data-viewport="${viewportName}" data-diff="${report.diffPercentage}" data-index="${index}">
+				<td class="url-cell" title="${url}">${url}</td>
+				<td>${viewportName} (${report.viewport.width}x${report.viewport.height})</td>
 				<td class="diff-percentage ${diffClass}"><span class="visually-hidden">${diffClass} difference: </span>${report.diffPercentage.toFixed(2)}%</td>
 				<td class="diff-percentage ${htmlDiffClass}">${report.htmlHasChanges ? 'Yes' : 'No'}</td>
 				<td><a href="${rel(report.reportPath)}">View Report</a></td>
-				<td><a href="#" onclick="openModal(window.diffData, ${index}); return false;">View Diff</a></td>
+				<td><button type="button" class="link-button" onclick="openModal(window.diffData, ${index}, this)">View Diff</button></td>
 				<td><a href="${rel(report.htmlDiffPath)}">View HTML Diff</a></td>
 			</tr>`;
 		})
 		.join('');
 
 	const viewportOptions = viewports
-		.map(
-			(v) =>
-				`<option value="${v.name}">${v.name} (${v.width}x${v.height})</option>`
-		)
+		.map((v) => {
+			const vn = escapeHtml(v.name);
+			return `<option value="${vn}">${vn} (${v.width}x${v.height})</option>`;
+		})
 		.join('\n\t\t\t\t');
 
 	const template = readTemplate('index.html');
 	const indexHtml = template
-		.replaceAll('{name}', name)
+		.replaceAll('{name}', escapeHtml(name))
 		.replaceAll('{threshold}', String(pixelmatchOptions.threshold))
 		.replaceAll('{includeAA}', pixelmatchOptions.includeAA ? 'Yes' : 'No')
 		.replaceAll('{alpha}', String(pixelmatchOptions.alpha))
@@ -206,7 +235,7 @@ export function generateIndex(config, reports) {
 		.replaceAll('{viewportOptions}', viewportOptions)
 		.replaceAll('{rows}', rows)
 		.replaceAll('{diffViewer}', diffViewer)
-		.replaceAll('{diffData}', JSON.stringify(diffData));
+		.replaceAll('{diffData}', jsonForScript(diffData));
 
 	const indexPath = path.join(dirs.reports, 'index.html');
 	fs.writeFileSync(indexPath, indexHtml);

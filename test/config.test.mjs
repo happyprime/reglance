@@ -126,6 +126,21 @@ test('filterTargets throws on an unmatched key and lists known keys', () => {
 	);
 });
 
+test('loadConfig rejects a path key with traversal or separators', () => {
+	const configPath = writeConfig({
+		domain: 'site.test',
+		paths: { '../escape': '/' },
+	});
+	assert.throws(() => loadConfig({ configPath }), /Invalid path key/);
+});
+
+test('validateViewports rejects a name with a path separator', () => {
+	assert.throws(
+		() => validateViewports([{ name: '../x', width: 10, height: 10 }]),
+		/Invalid viewport name/
+	);
+});
+
 test('loadConfig throws when the file is missing', () => {
 	assert.throws(
 		() => loadConfig({ configPath: '/nonexistent/reglance.json' }),
@@ -229,6 +244,36 @@ test('loadConfig merges configured timeouts over the defaults', () => {
 	// Overridden value wins; the unspecified one keeps its default.
 	assert.equal(config.timeouts.settle, 20000);
 	assert.equal(config.timeouts.goto, 15000);
+});
+
+test('loadConfig rejects a non-array diffColor instead of crashing later', () => {
+	const configPath = writeConfig({
+		domain: 'site.test',
+		paths: { home: '/' },
+		pixelmatchOptions: { diffColor: null },
+	});
+	assert.throws(() => loadConfig({ configPath }), /diffColor/);
+});
+
+test('loadConfig rejects an out-of-range diffColor channel', () => {
+	const configPath = writeConfig({
+		domain: 'site.test',
+		paths: { home: '/' },
+		pixelmatchOptions: { diffColor: [256, 0, 0] },
+	});
+	assert.throws(() => loadConfig({ configPath }), /diffColor/);
+});
+
+test('loadConfig accepts a valid diffColor triple', () => {
+	const configPath = writeConfig({
+		domain: 'site.test',
+		paths: { home: '/' },
+		pixelmatchOptions: { diffColor: [10, 20, 30] },
+	});
+	assert.deepEqual(
+		loadConfig({ configPath }).pixelmatchOptions.diffColor,
+		[10, 20, 30]
+	);
 });
 
 test('loadConfig derives a name from the domain host when unset', () => {

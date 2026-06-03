@@ -3,7 +3,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { generateIndex, generateReport } from '../src/report.mjs';
+import {
+	generateIndex,
+	generateReport,
+	generateHtmlDiff,
+	escapeHtml,
+} from '../src/report.mjs';
 
 /**
  * Build a minimal normalized-config shape with a real reports directory.
@@ -68,6 +73,32 @@ function sampleReport(config, over = {}) {
 	};
 }
 
+test('escapeHtml escapes all five HTML metacharacters', () => {
+	assert.equal(escapeHtml(`&<>"'`), '&amp;&lt;&gt;&quot;&#039;');
+	// & is escaped first so it doesn't double-escape the entities.
+	assert.equal(escapeHtml('a&b'), 'a&amp;b');
+	assert.equal(escapeHtml('plain'), 'plain');
+});
+
+test('generateIndex picks the severity class at the threshold boundaries', () => {
+	const config = tempConfig();
+	const cue = (pct) =>
+		fs
+			.readFileSync(
+				generateIndex(config, [
+					sampleReport(config, { diffPercentage: pct }),
+				]),
+				'utf8'
+			)
+			.match(/class="visually-hidden">(\w+) difference:/)[1];
+
+	// Thresholds are `> 1` high and `> 0.1` medium.
+	assert.equal(cue(0.1), 'low'); // not > 0.1
+	assert.equal(cue(0.5), 'medium');
+	assert.equal(cue(1), 'medium'); // not > 1
+	assert.equal(cue(1.5), 'high');
+});
+
 test('generateReport gives the reveal slider ARIA slider semantics', () => {
 	const config = tempConfig();
 	const html = fs.readFileSync(
@@ -79,6 +110,41 @@ test('generateReport gives the reveal slider ARIA slider semantics', () => {
 	assert.match(html, /aria-valuemin="0"/);
 	assert.match(html, /aria-valuemax="100"/);
 	assert.match(html, /aria-valuenow="50"/);
+});
+
+test('generateIndex escapes config/URL values and hardens the diffData sink', () => {
+	const config = tempConfig();
+	config.name = '<img src=x onerror=alert(1)>';
+	const report = sampleReport(config, {
+		url: 'https://site.test/?a=1&b=</script>',
+		urlKey: '</script><script>alert(1)</script>',
+	});
+	const html = fs.readFileSync(generateIndex(config, [report]), 'utf8');
+
+	// Config name is escaped in HTML contexts.
+	assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
+	// The URL's & and angle brackets are escaped in the row.
+	assert.match(
+		html,
+		/data-url="https:\/\/site\.test\/\?a=1&amp;b=&lt;\/script&gt;"/
+	);
+	// The diffData JSON sink neutralizes </script> rather than emitting it raw.
+	assert.ok(!html.includes('</script><script>alert(1)'));
+	assert.ok(html.includes('\\u003c/script>\\u003cscript>alert(1)'));
+});
+
+test('generateIndex renders View Diff as a button passing its trigger', () => {
+	const config = tempConfig();
+	const html = fs.readFileSync(
+		generateIndex(config, [sampleReport(config)]),
+		'utf8'
+	);
+	assert.match(
+		html,
+		/<button type="button" class="link-button" onclick="openModal\(window\.diffData, 0, this\)">View Diff<\/button>/
+	);
+	// The old fake anchor is gone.
+	assert.doesNotMatch(html, /<a href="#" onclick="openModal/);
 });
 
 test('generateIndex makes sortable headers keyboard-operable with sort state', () => {
@@ -119,6 +185,36 @@ test('generateReport escapes config-derived values in image alts', () => {
 	);
 	// The quote/angle bracket are escaped, not injected raw into the attribute.
 	assert.match(html, /alt="Second capture of a&quot;b&lt;c at desktop"/);
+});
+
+test('generateReport escapes name/urlKey in the per-comparison template', () => {
+	const config = tempConfig();
+	config.name = '<b>site</b>';
+	const html = fs.readFileSync(
+		generateReport(config, sampleReport(config, { urlKey: '<x>' })),
+		'utf8'
+	);
+	assert.match(html, /&lt;b&gt;site&lt;\/b&gt;/);
+	assert.match(html, /&lt;x&gt;/);
+	assert.doesNotMatch(html, /<h1>[^<]*<b>site<\/b>/);
+});
+
+test('generateHtmlDiff escapes the name and urlKey metadata', () => {
+	const { html } = generateHtmlDiff(
+		'a\n',
+		'b\n',
+		{
+			name: '<img onerror=x>',
+			urlKey: '<k>',
+			viewport: { name: 'desktop', width: 1, height: 1 },
+		},
+		(x, y) => [
+			{ removed: true, value: x },
+			{ added: true, value: y },
+		]
+	);
+	assert.match(html, /&lt;img onerror=x&gt;/);
+	assert.match(html, /&lt;k&gt;/);
 });
 
 test('generateReport declares image dimensions and async decoding', () => {
@@ -181,4 +277,22 @@ test('generateIndex labels the modal close/prev/next buttons', () => {
 	assert.match(html, /aria-label="Close diff viewer"/);
 	assert.match(html, /aria-label="Previous diff"/);
 	assert.match(html, /aria-label="Next diff"/);
+});
+
+test('generateIndex renders the diff modal as a labelled dialog', () => {
+	const config = tempConfig();
+	const html = fs.readFileSync(
+		generateIndex(config, [sampleReport(config)]),
+		'utf8'
+	);
+	assert.match(
+		html,
+		/<div id="diffModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" hidden>/
+	);
+	// The counter is a live region so navigation between diffs is announced.
+	assert.match(html, /id="modalCounter" aria-live="polite"/);
+	// The title uses a real field, not the missing `property` (which rendered
+	// "undefined").
+	assert.doesNotMatch(html, /currentDiff\.property/);
+	assert.match(html, /\$\{currentDiff\.name\}/);
 });
