@@ -22,6 +22,7 @@
 	"files": [
 		"bin",
 		"src",
+		"scripts",
 		"templates",
 		"reglance.example.json"
 	],
@@ -32,13 +33,13 @@
 		"lint": "eslint .",
 		"fix": "eslint . --fix",
 		"test": "node --test",
-		"postinstall": "playwright install chromium"
+		"postinstall": "node scripts/postinstall.mjs"
 	},
 	"dependencies": {
 		"diff": "^8.0.3",
 		"open": "^11.0.0",
 		"pixelmatch": "^7.2.0",
-		"playwright": "^1.60.0",
+		"playwright": "1.60.0",
 		"pngjs": "^7.0.0"
 	},
 	"devDependencies": {

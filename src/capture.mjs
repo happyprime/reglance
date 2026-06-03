@@ -285,9 +285,21 @@ export async function capture(config, options = {}) {
 		);
 	}
 
-	const browser = await chromium.launch(
-		ignoreHTTPSErrors ? { args: ['--ignore-certificate-errors'] } : {}
-	);
+	let browser;
+	try {
+		browser = await chromium.launch(
+			ignoreHTTPSErrors ? { args: ['--ignore-certificate-errors'] } : {}
+		);
+	} catch (error) {
+		// The postinstall browser download is best-effort, so surface a missing
+		// browser as an actionable message rather than a raw Playwright stack.
+		if (/install|executable doesn't exist/i.test(error.message)) {
+			throw new Error(
+				'Chromium is not installed. Run `npx playwright install chromium` and try again.'
+			);
+		}
+		throw error;
+	}
 
 	const failures = [];
 
