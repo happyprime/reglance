@@ -9,12 +9,18 @@
 		"testing"
 	],
 	"homepage": "https://github.com/happyprime/reglance",
+	"bugs": {
+		"url": "https://github.com/happyprime/reglance/issues"
+	},
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/happyprime/reglance.git"
 	},
 	"author": "Happy Prime",
 	"license": "MIT",
+	"publishConfig": {
+		"access": "public"
+	},
 	"type": "module",
 	"bin": {
 		"reglance": "bin/reglance.mjs"
