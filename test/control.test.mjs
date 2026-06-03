@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { loadConfig } from '../src/config.mjs';
 import { control } from '../src/control.mjs';
+import { readManifest } from '../src/manifest.mjs';
 
 /**
  * Build a normalized config backed by a fresh temp output directory.
@@ -82,4 +83,62 @@ test('control honors the only filter', () => {
 	assert.ok(!fs.existsSync(path.join(dirs.controls, 'blog-desktop.png')));
 	// blog captures stay put since they were not promoted.
 	assert.ok(fs.existsSync(path.join(dirs.captures, 'blog-desktop.png')));
+});
+
+test('control reports the shortfall on a partial promotion', () => {
+	const config = tempConfig({ home: '/', blog: '/blog' });
+	const { dirs } = config;
+
+	// Only the home captures exist; blog never captured (2 of 4 expected).
+	fs.mkdirSync(dirs.captures, { recursive: true });
+	fs.writeFileSync(path.join(dirs.captures, 'home-desktop.png'), 'png');
+	fs.writeFileSync(path.join(dirs.captures, 'home-mobile.png'), 'png');
+
+	const result = control(config);
+
+	assert.equal(result.expected, 4);
+	assert.equal(result.moved, 2);
+});
+
+test('control removes an orphan HTML snapshot when the PNG is absent', () => {
+	const config = tempConfig();
+	const { dirs } = config;
+
+	fs.mkdirSync(dirs.captures, { recursive: true });
+	fs.mkdirSync(dirs.capturesHtml, { recursive: true });
+	// HTML present but no matching PNG — an orphan from a failed prior run.
+	fs.writeFileSync(path.join(dirs.capturesHtml, 'home-desktop.html'), '<p>');
+	fs.writeFileSync(path.join(dirs.captures, 'home-mobile.png'), 'png');
+
+	control(config);
+
+	// The orphan is dropped rather than left to mispair with a future PNG.
+	assert.ok(
+		!fs.existsSync(path.join(dirs.capturesHtml, 'home-desktop.html'))
+	);
+	assert.ok(
+		!fs.existsSync(path.join(dirs.controlsHtml, 'home-desktop.html'))
+	);
+});
+
+test('control records promoted slugs in the manifest with a shared timestamp', () => {
+	const config = tempConfig();
+	const { dirs } = config;
+
+	fs.mkdirSync(dirs.captures, { recursive: true });
+	fs.writeFileSync(path.join(dirs.captures, 'home-desktop.png'), 'png');
+	fs.writeFileSync(path.join(dirs.captures, 'home-mobile.png'), 'png');
+
+	control(config, { now: '2026-06-03T00:00:00.000Z' });
+
+	const manifest = readManifest(dirs);
+	assert.equal(manifest.updatedAt, '2026-06-03T00:00:00.000Z');
+	assert.equal(
+		manifest.slugs['home-desktop'].promotedAt,
+		'2026-06-03T00:00:00.000Z'
+	);
+	assert.equal(
+		manifest.slugs['home-mobile'].promotedAt,
+		'2026-06-03T00:00:00.000Z'
+	);
 });

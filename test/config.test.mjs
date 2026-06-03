@@ -7,9 +7,15 @@ import {
 	normalizeDomain,
 	buildUrl,
 	validateViewports,
+	filterTargets,
 	loadConfig,
 	DEFAULT_PIXELMATCH_OPTIONS,
 } from '../src/config.mjs';
+
+const TARGETS = [
+	{ key: 'home', path: '/' },
+	{ key: 'blog', path: '/blog' },
+];
 
 /**
  * Write a reglance config to a fresh temp directory and return its path.
@@ -100,6 +106,26 @@ test('validateViewports rejects a non-integer dimension', () => {
 	);
 });
 
+test('filterTargets returns all targets when no filter is given', () => {
+	assert.equal(filterTargets(TARGETS), TARGETS);
+	assert.equal(filterTargets(TARGETS, []), TARGETS);
+});
+
+test('filterTargets narrows to the requested keys', () => {
+	const filtered = filterTargets(TARGETS, ['blog']);
+	assert.deepEqual(
+		filtered.map((t) => t.key),
+		['blog']
+	);
+});
+
+test('filterTargets throws on an unmatched key and lists known keys', () => {
+	assert.throws(
+		() => filterTargets(TARGETS, ['blgo']),
+		/No matching paths for: blgo\. Known keys: home, blog\./
+	);
+});
+
 test('loadConfig throws when the file is missing', () => {
 	assert.throws(
 		() => loadConfig({ configPath: '/nonexistent/reglance.json' }),
@@ -181,6 +207,28 @@ test('loadConfig merges pixelmatch options over the defaults', () => {
 		config.pixelmatchOptions.includeAA,
 		DEFAULT_PIXELMATCH_OPTIONS.includeAA
 	);
+});
+
+test('loadConfig falls back to default timeouts', () => {
+	const configPath = writeConfig({
+		domain: 'site.test',
+		paths: { home: '/' },
+	});
+	const config = loadConfig({ configPath });
+	assert.equal(config.timeouts.goto, 15000);
+	assert.equal(config.timeouts.settle, 8000);
+});
+
+test('loadConfig merges configured timeouts over the defaults', () => {
+	const configPath = writeConfig({
+		domain: 'site.test',
+		paths: { home: '/' },
+		timeouts: { settle: 20000 },
+	});
+	const config = loadConfig({ configPath });
+	// Overridden value wins; the unspecified one keeps its default.
+	assert.equal(config.timeouts.settle, 20000);
+	assert.equal(config.timeouts.goto, 15000);
 });
 
 test('loadConfig derives a name from the domain host when unset', () => {

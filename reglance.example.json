@@ -15,5 +15,9 @@
 		"includeAA": false,
 		"alpha": 0.1,
 		"diffColor": [255, 0, 0]
+	},
+	"timeouts": {
+		"goto": 15000,
+		"settle": 8000
 	}
 }

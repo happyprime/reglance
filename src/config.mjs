@@ -24,6 +24,12 @@ export const DEFAULT_PIXELMATCH_OPTIONS = {
 const DEFAULT_OUTPUT_DIR = '.reglance';
 
 /**
+ * Default capture timeouts (ms). `goto` bounds initial navigation; `settle`
+ * bounds the post-scroll network-idle wait that lets lazy assets load.
+ */
+export const DEFAULT_TIMEOUTS = { goto: 15000, settle: 8000 };
+
+/**
  * Normalize a domain into an origin with a scheme and no trailing slash.
  *
  * Accepts bare hosts ("site.test"), hosts with a scheme
@@ -130,6 +136,34 @@ export function buildUrl(domain, pathname) {
 }
 
 /**
+ * Narrow the target list to a set of requested path keys.
+ *
+ * Throws when none of the requested keys match, so a typo'd key on
+ * `control`/`compare` surfaces an actionable error instead of silently
+ * doing nothing and printing a success-looking summary.
+ *
+ * @param {Array}    targets - The configured targets.
+ * @param {string[]} [only]  - Path keys to keep. Falsy/empty keeps all.
+ * @returns {Array} The filtered targets.
+ */
+export function filterTargets(targets, only) {
+	if (!only?.length) {
+		return targets;
+	}
+
+	const filtered = targets.filter((target) => only.includes(target.key));
+
+	if (filtered.length === 0) {
+		throw new Error(
+			`No matching paths for: ${only.join(', ')}. ` +
+				`Known keys: ${targets.map((target) => target.key).join(', ')}.`
+		);
+	}
+
+	return filtered;
+}
+
+/**
  * Load and normalize a reglance config file.
  *
  * @param {object}  [options]            - Loader options.
@@ -186,6 +220,10 @@ export function loadConfig({ configPath = 'reglance.json', domain } = {}) {
 			...DEFAULT_PIXELMATCH_OPTIONS,
 			...raw.pixelmatchOptions,
 		},
+		timeouts: {
+			...DEFAULT_TIMEOUTS,
+			...raw.timeouts,
+		},
 		// Directory paths derived from the output directory.
 		dirs: {
 			captures: path.join(outputDir, 'captures'),
@@ -209,6 +247,17 @@ export function loadConfig({ configPath = 'reglance.json', domain } = {}) {
  */
 export function ensureOutputDir(config) {
 	fs.mkdirSync(config.outputDir, { recursive: true });
+
+	// Fail fast with a clear message on a read-only or unwritable output dir,
+	// rather than partway through a run with an opaque fs error.
+	try {
+		fs.accessSync(config.outputDir, fs.constants.W_OK);
+	} catch {
+		throw new Error(
+			`Output directory is not writable: ${config.outputDir}. ` +
+				'Check the permissions on the directory and available disk space.'
+		);
+	}
 
 	const gitignorePath = path.join(config.outputDir, '.gitignore');
 	if (!fs.existsSync(gitignorePath)) {

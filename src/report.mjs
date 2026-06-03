@@ -54,8 +54,10 @@ export function generateHtmlDiff(html1, html2, context, diffLines) {
 	const { name, urlKey, viewport } = context;
 	const changes = diffLines(html1, html2);
 	let hasChanges = false;
-	let diffContent = '';
 
+	// Build the diff via an array join rather than repeated `+=` so a large
+	// document doesn't reallocate an ever-growing string per line.
+	const parts = [];
 	for (const part of changes) {
 		const cls = part.added
 			? 'diff-added'
@@ -66,8 +68,11 @@ export function generateHtmlDiff(html1, html2, context, diffLines) {
 		if (part.added || part.removed) {
 			hasChanges = true;
 		}
-		diffContent += `<div class="${cls}"><span class="line-number">${marker}</span><span class="line-content">${escapeHtml(part.value)}</span></div>`;
+		parts.push(
+			`<div class="${cls}"><span class="line-number">${marker}</span><span class="line-content">${escapeHtml(part.value)}</span></div>`
+		);
 	}
+	const diffContent = parts.join('');
 
 	const template = readTemplate('html-diff.html');
 	const html = template
