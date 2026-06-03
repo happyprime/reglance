@@ -95,6 +95,32 @@ test('generateIndex makes sortable headers keyboard-operable with sort state', (
 	assert.match(html, /class="sort-indicator" aria-hidden="true"/);
 });
 
+test('generateReport announces the toggle and gives descriptive image alts', () => {
+	const config = tempConfig();
+	const html = fs.readFileSync(
+		generateReport(config, sampleReport(config)),
+		'utf8'
+	);
+	// The right-hand label is a live status region so the toggle is announced.
+	assert.match(
+		html,
+		/id="rightLabel"[^>]*role="status"[^>]*aria-live="polite"/
+	);
+	// Alts describe the content (which page, which viewport), not the slot.
+	assert.match(html, /alt="Second capture of home at desktop"/);
+	assert.match(html, /alt="Original \(control\) capture of home at desktop"/);
+});
+
+test('generateReport escapes config-derived values in image alts', () => {
+	const config = tempConfig();
+	const html = fs.readFileSync(
+		generateReport(config, sampleReport(config, { urlKey: 'a"b<c' })),
+		'utf8'
+	);
+	// The quote/angle bracket are escaped, not injected raw into the attribute.
+	assert.match(html, /alt="Second capture of a&quot;b&lt;c at desktop"/);
+});
+
 test('generateReport declares image dimensions and async decoding', () => {
 	const config = tempConfig();
 	const html = fs.readFileSync(

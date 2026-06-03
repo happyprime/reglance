@@ -103,8 +103,16 @@ export function generateReport(config, report) {
 	// Paths in the report are relative to the reports directory.
 	const rel = (target) => path.relative(dirs.reports, target);
 
+	// Content-describing alts. Escape the config-derived values since they are
+	// injected into an attribute.
+	const where = `${escapeHtml(urlKey)} at ${escapeHtml(viewport.name)}`;
+	const baseAlt = `Second capture of ${where}`;
+	const overlayAlt = `Original (control) capture of ${where}`;
+
 	template = template
 		.replaceAll('{name}', name)
+		.replaceAll('{baseAlt}', baseAlt)
+		.replaceAll('{overlayAlt}', overlayAlt)
 		.replaceAll('{urlKey}', urlKey)
 		.replaceAll('{viewportName}', viewport.name)
 		.replaceAll('{viewportWidth}', String(viewport.width))

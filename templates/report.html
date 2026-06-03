@@ -29,9 +29,9 @@
 	</div>
 	<div class="compare">
 		<div class="image-container">
-			<img id="baseImage" src="{secondImage}" width="{captureWidth}" height="{captureHeight}" decoding="async" alt="Second Image">
+			<img id="baseImage" src="{secondImage}" width="{captureWidth}" height="{captureHeight}" decoding="async" alt="{baseAlt}">
 			<div class="image-overlay">
-				<img src="{originalImage}" width="{controlWidth}" height="{controlHeight}" decoding="async" alt="Original Image">
+				<img src="{originalImage}" width="{controlWidth}" height="{controlHeight}" decoding="async" alt="{overlayAlt}">
 			</div>
 			<div class="slider" role="slider" tabindex="0"
 				aria-label="Reveal amount: original versus second image"
@@ -40,7 +40,7 @@
 				<div class="slider-button"></div>
 			</div>
 			<div class="image-label left-label">Original Image</div>
-			<div class="image-label right-label" id="rightLabel">Second Image</div>
+			<div class="image-label right-label" id="rightLabel" role="status" aria-live="polite">Second Image</div>
 			<button class="toggle-button" id="toggleButton">Show Diff</button>
 		</div>
 	</div>
