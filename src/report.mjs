@@ -103,8 +103,16 @@ export function generateReport(config, report) {
 	// Paths in the report are relative to the reports directory.
 	const rel = (target) => path.relative(dirs.reports, target);
 
+	// Content-describing alts. Escape the config-derived values since they are
+	// injected into an attribute.
+	const where = `${escapeHtml(urlKey)} at ${escapeHtml(viewport.name)}`;
+	const baseAlt = `Second capture of ${where}`;
+	const overlayAlt = `Original (control) capture of ${where}`;
+
 	template = template
 		.replaceAll('{name}', name)
+		.replaceAll('{baseAlt}', baseAlt)
+		.replaceAll('{overlayAlt}', overlayAlt)
 		.replaceAll('{urlKey}', urlKey)
 		.replaceAll('{viewportName}', viewport.name)
 		.replaceAll('{viewportWidth}', String(viewport.width))
@@ -112,6 +120,10 @@ export function generateReport(config, report) {
 		.replaceAll('{originalImage}', rel(controlImage))
 		.replaceAll('{secondImage}', rel(captureImage))
 		.replaceAll('{diffImage}', rel(diffImage))
+		.replaceAll('{controlWidth}', String(report.controlWidth ?? ''))
+		.replaceAll('{controlHeight}', String(report.controlHeight ?? ''))
+		.replaceAll('{captureWidth}', String(report.captureWidth ?? ''))
+		.replaceAll('{captureHeight}', String(report.captureHeight ?? ''))
 		.replaceAll('{diffPercentage}', report.diffPercentage.toFixed(2))
 		.replaceAll('{threshold}', String(pixelmatchOptions.threshold))
 		.replaceAll('{includeAA}', pixelmatchOptions.includeAA ? 'Yes' : 'No')
@@ -150,6 +162,8 @@ export function generateIndex(config, reports) {
 		htmlDiffUrl: rel(report.htmlDiffPath),
 		diffPercentage: report.diffPercentage,
 		htmlHasChanges: report.htmlHasChanges,
+		diffWidth: report.diffWidth,
+		diffHeight: report.diffHeight,
 	}));
 
 	const rows = sorted
@@ -166,7 +180,7 @@ export function generateIndex(config, reports) {
 			<tr data-url="${report.url}" data-viewport="${report.viewport.name}" data-diff="${report.diffPercentage}" data-index="${index}">
 				<td class="url-cell" title="${report.url}">${report.url}</td>
 				<td>${report.viewport.name} (${report.viewport.width}x${report.viewport.height})</td>
-				<td class="diff-percentage ${diffClass}">${report.diffPercentage.toFixed(2)}%</td>
+				<td class="diff-percentage ${diffClass}"><span class="visually-hidden">${diffClass} difference: </span>${report.diffPercentage.toFixed(2)}%</td>
 				<td class="diff-percentage ${htmlDiffClass}">${report.htmlHasChanges ? 'Yes' : 'No'}</td>
 				<td><a href="${rel(report.reportPath)}">View Report</a></td>
 				<td><a href="#" onclick="openModal(window.diffData, ${index}); return false;">View Diff</a></td>

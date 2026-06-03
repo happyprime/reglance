@@ -38,16 +38,31 @@ a:hover {
 	font-weight: bold;
 }
 
+/* Darkened to meet the WCAG AA 4.5:1 minimum on white. */
 .diff-percentage.high {
-	color: #d32f2f;
+	color: #c62828;
 }
 
 .diff-percentage.medium {
-	color: #f57c00;
+	color: #b25f00;
 }
 
 .diff-percentage.low {
-	color: #388e3c;
+	color: #2e7d32;
+}
+
+/* Visible to screen readers only — carries the severity word so the
+   medium/high/low distinction isn't conveyed by color alone. */
+.visually-hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+	border: 0;
 }
 
 .settings {
@@ -126,12 +141,32 @@ td.url-cell {
 }
 
 th[data-sort] {
-	cursor: pointer;
+	padding: 0;
 	user-select: none;
 }
 
-th[data-sort]:hover {
+/* Full-width unstyled button so the whole header cell is the click/focus
+   target while remaining keyboard-operable. */
+.th-sort {
+	display: block;
+	width: 100%;
+	margin: 0;
+	padding: 0.5rem;
+	background: none;
+	border: 0;
+	font: inherit;
+	font-weight: bold;
+	text-align: left;
+	cursor: pointer;
+}
+
+.th-sort:hover {
 	background: #e8e8e8;
+}
+
+.th-sort:focus-visible {
+	outline: 2px solid #0066cc;
+	outline-offset: -2px;
 }
 
 th .sort-indicator {

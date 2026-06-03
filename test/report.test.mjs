@@ -1,0 +1,184 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { generateIndex, generateReport } from '../src/report.mjs';
+
+/**
+ * Build a minimal normalized-config shape with a real reports directory.
+ *
+ * @returns {object} The config stub.
+ */
+function tempConfig() {
+	const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reglance-test-'));
+	const reports = path.join(outputDir, 'reports');
+	fs.mkdirSync(reports, { recursive: true });
+	return {
+		name: 'My Site',
+		viewports: [{ name: 'desktop', width: 1920, height: 1080 }],
+		pixelmatchOptions: {
+			threshold: 0.1,
+			includeAA: false,
+			alpha: 0.1,
+			diffColor: [255, 0, 0],
+		},
+		dirs: {
+			reports,
+			compares: path.join(outputDir, 'compares'),
+		},
+	};
+}
+
+/**
+ * A single comparison report record for the index.
+ *
+ * @param {object} config - The config stub (for path bases).
+ * @param {object} [over] - Field overrides.
+ * @returns {object} The report record.
+ */
+function sampleReport(config, over = {}) {
+	return {
+		url: 'https://site.test/',
+		urlKey: 'home',
+		viewport: { name: 'desktop', width: 1920, height: 1080 },
+		controlImage: path.join(
+			config.dirs.compares,
+			'home-desktop-control.png'
+		),
+		captureImage: path.join(
+			config.dirs.compares,
+			'home-desktop-capture.png'
+		),
+		diffImage: path.join(config.dirs.compares, 'home-desktop-diff.png'),
+		htmlDiffPath: path.join(
+			config.dirs.compares,
+			'home-desktop-html-diff.html'
+		),
+		reportPath: path.join(config.dirs.reports, 'home-desktop-compare.html'),
+		diffPercentage: 2.5,
+		htmlHasChanges: true,
+		controlWidth: 1920,
+		controlHeight: 3800,
+		captureWidth: 1920,
+		captureHeight: 4000,
+		diffWidth: 1920,
+		diffHeight: 4000,
+		...over,
+	};
+}
+
+test('generateReport gives the reveal slider ARIA slider semantics', () => {
+	const config = tempConfig();
+	const html = fs.readFileSync(
+		generateReport(config, sampleReport(config)),
+		'utf8'
+	);
+	assert.match(html, /role="slider"/);
+	assert.match(html, /aria-label="Reveal amount/);
+	assert.match(html, /aria-valuemin="0"/);
+	assert.match(html, /aria-valuemax="100"/);
+	assert.match(html, /aria-valuenow="50"/);
+});
+
+test('generateIndex makes sortable headers keyboard-operable with sort state', () => {
+	const config = tempConfig();
+	const html = fs.readFileSync(
+		generateIndex(config, [sampleReport(config)]),
+		'utf8'
+	);
+
+	// Each sortable header carries an initial aria-sort and a real button.
+	assert.match(html, /<th data-sort="url" aria-sort="none">/);
+	assert.match(html, /<button type="button" class="th-sort">/);
+	// The decorative arrow is hidden from assistive tech.
+	assert.match(html, /class="sort-indicator" aria-hidden="true"/);
+});
+
+test('generateReport announces the toggle and gives descriptive image alts', () => {
+	const config = tempConfig();
+	const html = fs.readFileSync(
+		generateReport(config, sampleReport(config)),
+		'utf8'
+	);
+	// The right-hand label is a live status region so the toggle is announced.
+	assert.match(
+		html,
+		/id="rightLabel"[^>]*role="status"[^>]*aria-live="polite"/
+	);
+	// Alts describe the content (which page, which viewport), not the slot.
+	assert.match(html, /alt="Second capture of home at desktop"/);
+	assert.match(html, /alt="Original \(control\) capture of home at desktop"/);
+});
+
+test('generateReport escapes config-derived values in image alts', () => {
+	const config = tempConfig();
+	const html = fs.readFileSync(
+		generateReport(config, sampleReport(config, { urlKey: 'a"b<c' })),
+		'utf8'
+	);
+	// The quote/angle bracket are escaped, not injected raw into the attribute.
+	assert.match(html, /alt="Second capture of a&quot;b&lt;c at desktop"/);
+});
+
+test('generateReport declares image dimensions and async decoding', () => {
+	const config = tempConfig();
+	const html = fs.readFileSync(
+		generateReport(config, sampleReport(config)),
+		'utf8'
+	);
+	// baseImage = the capture; overlay = the control. Both carry intrinsic
+	// dimensions so the browser reserves the box (no layout shift).
+	assert.match(
+		html,
+		/id="baseImage"[^>]*width="1920"[^>]*height="4000"[^>]*decoding="async"/
+	);
+	assert.match(html, /width="1920"[^>]*height="3800"[^>]*decoding="async"/);
+});
+
+test('generateIndex carries diff image dimensions for the modal', () => {
+	const config = tempConfig();
+	const html = fs.readFileSync(
+		generateIndex(config, [sampleReport(config)]),
+		'utf8'
+	);
+	assert.match(html, /"diffWidth":1920/);
+	assert.match(html, /"diffHeight":4000/);
+});
+
+test('generateIndex adds a non-color severity cue to the diff percentage', () => {
+	const config = tempConfig();
+	// diffPercentage 2.5 → "high" severity class.
+	const html = fs.readFileSync(
+		generateIndex(config, [sampleReport(config, { diffPercentage: 2.5 })]),
+		'utf8'
+	);
+	assert.match(
+		html,
+		/<span class="visually-hidden">high difference: <\/span>2\.50%/
+	);
+});
+
+test('generateIndex includes a live empty-state row for filtered results', () => {
+	const config = tempConfig();
+	const html = fs.readFileSync(
+		generateIndex(config, [sampleReport(config)]),
+		'utf8'
+	);
+	assert.match(html, /<tr id="emptyRow" hidden>/);
+	assert.match(
+		html,
+		/aria-live="polite">No comparisons match your filters\./
+	);
+});
+
+test('generateIndex labels the modal close/prev/next buttons', () => {
+	const config = tempConfig();
+	const html = fs.readFileSync(
+		generateIndex(config, [sampleReport(config)]),
+		'utf8'
+	);
+	assert.match(html, /aria-label="Close diff viewer"/);
+	assert.match(html, /aria-label="Previous diff"/);
+	assert.match(html, /aria-label="Next diff"/);
+});

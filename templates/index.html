@@ -52,10 +52,10 @@
 	<table id="reportsTable">
 		<thead>
 			<tr>
-				<th data-sort="url">URL <span class="sort-indicator"></span></th>
-				<th data-sort="viewport">Viewport <span class="sort-indicator"></span></th>
-				<th data-sort="diff">Visual Difference <span class="sort-indicator"></span></th>
-				<th data-sort="html">HTML Changes <span class="sort-indicator"></span></th>
+				<th data-sort="url" aria-sort="none"><button type="button" class="th-sort">URL <span class="sort-indicator" aria-hidden="true"></span></button></th>
+				<th data-sort="viewport" aria-sort="none"><button type="button" class="th-sort">Viewport <span class="sort-indicator" aria-hidden="true"></span></button></th>
+				<th data-sort="diff" aria-sort="none"><button type="button" class="th-sort">Visual Difference <span class="sort-indicator" aria-hidden="true"></span></button></th>
+				<th data-sort="html" aria-sort="none"><button type="button" class="th-sort">HTML Changes <span class="sort-indicator" aria-hidden="true"></span></button></th>
 				<th>Report</th>
 				<th>Visual Diff</th>
 				<th>HTML Diff</th>
@@ -63,6 +63,7 @@
 		</thead>
 		<tbody>
 		{rows}
+			<tr id="emptyRow" hidden><td colspan="7" aria-live="polite">No comparisons match your filters.</td></tr>
 		</tbody>
 	</table>
 	</div>
@@ -77,11 +78,13 @@
 		const diff = document.getElementById('filterDiff');
 		const tbody = document.querySelector('#reportsTable tbody');
 
+		const emptyRow = document.getElementById('emptyRow');
+
 		function filterRows() {
 			const q = search.value.toLowerCase();
 			const vp = viewport.value;
 			const d = diff.value;
-			const rows = tbody.querySelectorAll('tr');
+			const rows = tbody.querySelectorAll('tr[data-url]');
 			rows.forEach(function(row) {
 				const url = row.getAttribute('data-url').toLowerCase();
 				const rv = row.getAttribute('data-viewport');
@@ -93,16 +96,21 @@
 				if (d === 'none' && dp > 0) show = false;
 				row.style.display = show ? '' : 'none';
 			});
+			// Show the empty-state row only when every data row is hidden.
+			const anyVisible = Array.from(rows).some(function(r) { return r.style.display !== 'none'; });
+			emptyRow.hidden = anyVisible;
 		}
 
 		search.addEventListener('input', filterRows);
 		viewport.addEventListener('change', filterRows);
 		diff.addEventListener('change', filterRows);
 
-		// Sorting
+		// Sorting. The button inside each sortable header is natively
+		// focusable and Enter/Space-activatable, so keyboard users can sort.
 		let currentSort = { col: null, asc: true };
-		document.querySelectorAll('th[data-sort]').forEach(function(th) {
-			th.addEventListener('click', function() {
+		document.querySelectorAll('th[data-sort] .th-sort').forEach(function(button) {
+			button.addEventListener('click', function() {
+				const th = button.closest('th');
 				const col = th.getAttribute('data-sort');
 				if (currentSort.col === col) {
 					currentSort.asc = !currentSort.asc;
@@ -110,7 +118,7 @@
 					currentSort.col = col;
 					currentSort.asc = true;
 				}
-				const rows = Array.from(tbody.querySelectorAll('tr'));
+				const rows = Array.from(tbody.querySelectorAll('tr[data-url]'));
 				rows.sort(function(a, b) {
 					let va, vb;
 					if (col === 'url') {
@@ -132,7 +140,12 @@
 					return 0;
 				});
 				rows.forEach(function(r) { tbody.appendChild(r); });
-				document.querySelectorAll('th .sort-indicator').forEach(function(s) { s.textContent = ''; });
+				// Reflect sort state to assistive tech and the arrow glyph.
+				document.querySelectorAll('th[data-sort]').forEach(function(h) {
+					h.setAttribute('aria-sort', 'none');
+					h.querySelector('.sort-indicator').textContent = '';
+				});
+				th.setAttribute('aria-sort', currentSort.asc ? 'ascending' : 'descending');
 				th.querySelector('.sort-indicator').textContent = currentSort.asc ? '▲' : '▼';
 			});
 		});

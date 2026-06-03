@@ -17,36 +17,30 @@ function setSliderPosition(pos) {
 	currentPosition = Math.max(0, Math.min(1, pos));
 	overlay.style.clipPath = `inset(0 ${(1 - currentPosition) * 100}% 0 0)`;
 	slider.style.left = currentPosition * 100 + '%';
+	slider.setAttribute(
+		'aria-valuenow',
+		String(Math.round(currentPosition * 100))
+	);
 }
 
-slider.setAttribute('tabindex', '0');
-
-slider.addEventListener('mousedown', () => {
+// Pointer Events cover mouse, touch, and pen with one code path, so the
+// slider works on phones and tablets too. Capturing the pointer keeps the
+// drag tracking even when it leaves the thin handle.
+slider.addEventListener('pointerdown', (e) => {
 	isResizing = true;
-	document.addEventListener('mousemove', onMouseMove);
-	document.addEventListener('mouseup', onMouseUp);
+	slider.setPointerCapture(e.pointerId);
 });
 
-/**
- *
- * @param e
- */
-function onMouseMove(e) {
+slider.addEventListener('pointermove', (e) => {
 	if (!isResizing) return;
-	const container = slider.closest('.compare');
-	const containerRect = container.getBoundingClientRect();
-	const pos = (e.pageX - containerRect.left) / containerRect.width;
-	setSliderPosition(pos);
-}
+	const containerRect = slider.closest('.compare').getBoundingClientRect();
+	setSliderPosition((e.clientX - containerRect.left) / containerRect.width);
+});
 
-/**
- *
- */
-function onMouseUp() {
+slider.addEventListener('pointerup', (e) => {
 	isResizing = false;
-	document.removeEventListener('mousemove', onMouseMove);
-	document.removeEventListener('mouseup', onMouseUp);
-}
+	slider.releasePointerCapture(e.pointerId);
+});
 
 slider.addEventListener('keydown', (e) => {
 	const step = e.shiftKey ? 0.05 : 0.01;

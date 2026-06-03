@@ -116,12 +116,12 @@
 			<div class="modal-title" id="modalTitle"></div>
 			<span class="modal-counter" id="modalCounter"></span>
 			<span class="modal-diff-pct" id="modalDiffPct"></span>
-			<button class="modal-close" onclick="closeModal()">&times;</button>
+			<button class="modal-close" aria-label="Close diff viewer" onclick="closeModal()"><span aria-hidden="true">&times;</span></button>
 		</div>
 		<div class="modal-body" id="modalBody">
-			<button class="modal-nav modal-prev" onclick="navigateDiff(-1)">&larr;</button>
-			<img id="modalImage" class="modal-image" src="" alt="Diff Image" onload="document.getElementById('modalBody').classList.remove('loading')">
-			<button class="modal-nav modal-next" onclick="navigateDiff(1)">&rarr;</button>
+			<button class="modal-nav modal-prev" aria-label="Previous diff" onclick="navigateDiff(-1)"><span aria-hidden="true">&larr;</span></button>
+			<img id="modalImage" class="modal-image" src="" decoding="async" alt="Diff Image" onload="document.getElementById('modalBody').classList.remove('loading')">
+			<button class="modal-nav modal-next" aria-label="Next diff" onclick="navigateDiff(1)"><span aria-hidden="true">&rarr;</span></button>
 		</div>
 	</div>
 </div>
@@ -159,7 +159,14 @@
 		document.getElementById('modalDiffPct').textContent =
 			`${currentDiff.diffPercentage.toFixed(2)}%`;
 		document.getElementById('modalBody').classList.add('loading');
-		document.getElementById('modalImage').src = currentDiff.diffUrl;
+		const modalImage = document.getElementById('modalImage');
+		// Set intrinsic dimensions before the source so the box is reserved
+		// and the image doesn't reflow as it decodes.
+		if (currentDiff.diffWidth && currentDiff.diffHeight) {
+			modalImage.width = currentDiff.diffWidth;
+			modalImage.height = currentDiff.diffHeight;
+		}
+		modalImage.src = currentDiff.diffUrl;
 	}
 
 	// Close modal when clicking outside

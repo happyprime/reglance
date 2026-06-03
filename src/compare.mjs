@@ -85,6 +85,13 @@ export function compareSlug(config, target, viewport) {
 	let img1 = PNG.sync.read(fs.readFileSync(controlImage));
 	let img2 = PNG.sync.read(fs.readFileSync(captureImage));
 
+	// Remember each image's natural size before padding so the report can
+	// declare width/height and reserve the box (no layout shift on decode).
+	const controlWidth = img1.width;
+	const controlHeight = img1.height;
+	const captureWidth = img2.width;
+	const captureHeight = img2.height;
+
 	// Pad both onto a common canvas so width changes (a real layout
 	// regression) surface as a large diff instead of dropping the slug from
 	// the report. Height was already handled this way; width is too now.
@@ -148,6 +155,12 @@ export function compareSlug(config, target, viewport) {
 		diffPercentage,
 		htmlDiffPath,
 		htmlHasChanges: htmlResult.hasChanges,
+		controlWidth,
+		controlHeight,
+		captureWidth,
+		captureHeight,
+		diffWidth: maxWidth,
+		diffHeight: maxHeight,
 	};
 
 	report.reportPath = generateReport(config, report);
