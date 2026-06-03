@@ -7,6 +7,7 @@ import {
 	generateIndex,
 	generateReport,
 	generateHtmlDiff,
+	escapeHtml,
 } from '../src/report.mjs';
 
 /**
@@ -71,6 +72,32 @@ function sampleReport(config, over = {}) {
 		...over,
 	};
 }
+
+test('escapeHtml escapes all five HTML metacharacters', () => {
+	assert.equal(escapeHtml(`&<>"'`), '&amp;&lt;&gt;&quot;&#039;');
+	// & is escaped first so it doesn't double-escape the entities.
+	assert.equal(escapeHtml('a&b'), 'a&amp;b');
+	assert.equal(escapeHtml('plain'), 'plain');
+});
+
+test('generateIndex picks the severity class at the threshold boundaries', () => {
+	const config = tempConfig();
+	const cue = (pct) =>
+		fs
+			.readFileSync(
+				generateIndex(config, [
+					sampleReport(config, { diffPercentage: pct }),
+				]),
+				'utf8'
+			)
+			.match(/class="visually-hidden">(\w+) difference:/)[1];
+
+	// Thresholds are `> 1` high and `> 0.1` medium.
+	assert.equal(cue(0.1), 'low'); // not > 0.1
+	assert.equal(cue(0.5), 'medium');
+	assert.equal(cue(1), 'medium'); // not > 1
+	assert.equal(cue(1.5), 'high');
+});
 
 test('generateReport gives the reveal slider ARIA slider semantics', () => {
 	const config = tempConfig();

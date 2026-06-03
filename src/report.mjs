@@ -43,7 +43,7 @@ export function copyAssets(config) {
  * @param {string} str - The string to escape.
  * @returns {string} The escaped string.
  */
-function escapeHtml(str) {
+export function escapeHtml(str) {
 	return String(str)
 		.replace(/&/g, '&amp;')
 		.replace(/</g, '&lt;')
