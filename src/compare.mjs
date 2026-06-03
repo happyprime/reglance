@@ -6,6 +6,7 @@ import pixelmatch from 'pixelmatch';
 import { diffLines } from 'diff';
 import open from 'open';
 import { filterTargets } from './config.mjs';
+import { readManifest, detectStaleControls } from './manifest.mjs';
 import {
 	copyAssets,
 	generateHtmlDiff,
@@ -117,6 +118,30 @@ export function compareSlug(config, target, viewport) {
 }
 
 /**
+ * Warn when the controls being compared were promoted across more than one
+ * `control` run, which means the baseline mixes captures from different times.
+ *
+ * @param {object} config  - The normalized config.
+ * @param {Array}  targets - The targets being compared.
+ */
+function warnOnStaleControls(config, targets) {
+	const slugs = targets.flatMap((target) =>
+		config.viewports.map((viewport) => `${target.key}-${viewport.name}`)
+	);
+	const manifest = readManifest(config.dirs);
+	const { runs, oldest } = detectStaleControls(manifest, slugs);
+
+	if (oldest) {
+		console.warn(
+			`⚠️  Baseline mixes controls from ${runs.length} different ` +
+				`control runs (oldest: ${oldest.slug} @ ${oldest.promotedAt}). ` +
+				'Diffs may reflect baseline age, not real changes. Re-promote a ' +
+				'full set with "reglance control" for a coherent baseline.'
+		);
+	}
+}
+
+/**
  * Compare every captured target against its control and build the report.
  *
  * @param {object}  config            - The normalized config.
@@ -133,6 +158,8 @@ export async function compare(config, options = {}) {
 	copyAssets(config);
 
 	const targets = filterTargets(config.targets, options.only);
+
+	warnOnStaleControls(config, targets);
 
 	const reports = [];
 	for (const target of targets) {
