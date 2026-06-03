@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { filterTargets } from './config.mjs';
 
 /**
  * Promote the latest captures to controls (the comparison baseline).
@@ -18,10 +19,7 @@ export function control(config, options = {}) {
 	fs.mkdirSync(dirs.controls, { recursive: true });
 	fs.mkdirSync(dirs.controlsHtml, { recursive: true });
 
-	let targets = config.targets;
-	if (options.only?.length) {
-		targets = targets.filter((target) => options.only.includes(target.key));
-	}
+	const targets = filterTargets(config.targets, options.only);
 
 	let moved = 0;
 

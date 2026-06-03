@@ -7,9 +7,15 @@ import {
 	normalizeDomain,
 	buildUrl,
 	validateViewports,
+	filterTargets,
 	loadConfig,
 	DEFAULT_PIXELMATCH_OPTIONS,
 } from '../src/config.mjs';
+
+const TARGETS = [
+	{ key: 'home', path: '/' },
+	{ key: 'blog', path: '/blog' },
+];
 
 /**
  * Write a reglance config to a fresh temp directory and return its path.
@@ -97,6 +103,26 @@ test('validateViewports rejects a non-integer dimension', () => {
 	assert.throws(
 		() => validateViewports([{ name: 'x', width: 100, height: 'tall' }]),
 		/height must be a positive integer/
+	);
+});
+
+test('filterTargets returns all targets when no filter is given', () => {
+	assert.equal(filterTargets(TARGETS), TARGETS);
+	assert.equal(filterTargets(TARGETS, []), TARGETS);
+});
+
+test('filterTargets narrows to the requested keys', () => {
+	const filtered = filterTargets(TARGETS, ['blog']);
+	assert.deepEqual(
+		filtered.map((t) => t.key),
+		['blog']
+	);
+});
+
+test('filterTargets throws on an unmatched key and lists known keys', () => {
+	assert.throws(
+		() => filterTargets(TARGETS, ['blgo']),
+		/No matching paths for: blgo\. Known keys: home, blog\./
 	);
 });
 

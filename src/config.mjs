@@ -130,6 +130,34 @@ export function buildUrl(domain, pathname) {
 }
 
 /**
+ * Narrow the target list to a set of requested path keys.
+ *
+ * Throws when none of the requested keys match, so a typo'd key on
+ * `control`/`compare` surfaces an actionable error instead of silently
+ * doing nothing and printing a success-looking summary.
+ *
+ * @param {Array}    targets - The configured targets.
+ * @param {string[]} [only]  - Path keys to keep. Falsy/empty keeps all.
+ * @returns {Array} The filtered targets.
+ */
+export function filterTargets(targets, only) {
+	if (!only?.length) {
+		return targets;
+	}
+
+	const filtered = targets.filter((target) => only.includes(target.key));
+
+	if (filtered.length === 0) {
+		throw new Error(
+			`No matching paths for: ${only.join(', ')}. ` +
+				`Known keys: ${targets.map((target) => target.key).join(', ')}.`
+		);
+	}
+
+	return filtered;
+}
+
+/**
  * Load and normalize a reglance config file.
  *
  * @param {object}  [options]            - Loader options.

@@ -5,6 +5,7 @@ import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
 import { diffLines } from 'diff';
 import open from 'open';
+import { filterTargets } from './config.mjs';
 import {
 	copyAssets,
 	generateHtmlDiff,
@@ -131,10 +132,7 @@ export async function compare(config, options = {}) {
 	fs.mkdirSync(dirs.reports, { recursive: true });
 	copyAssets(config);
 
-	let targets = config.targets;
-	if (options.only?.length) {
-		targets = targets.filter((target) => options.only.includes(target.key));
-	}
+	const targets = filterTargets(config.targets, options.only);
 
 	const reports = [];
 	for (const target of targets) {

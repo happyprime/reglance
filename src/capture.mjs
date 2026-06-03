@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright';
+import { filterTargets } from './config.mjs';
 
 /**
  * Wait for the network to be idle, with a hard cap on how long to wait.
@@ -183,14 +184,7 @@ export async function capture(config, options = {}) {
 	fs.mkdirSync(config.dirs.captures, { recursive: true });
 	fs.mkdirSync(config.dirs.capturesHtml, { recursive: true });
 
-	let targets = config.targets;
-	if (options.only?.length) {
-		targets = targets.filter((target) => options.only.includes(target.key));
-		if (targets.length === 0) {
-			console.error(`No matching paths for: ${options.only.join(', ')}`);
-			return;
-		}
-	}
+	const targets = filterTargets(config.targets, options.only);
 
 	const totalShots = targets.length * config.viewports.length;
 	console.log(`Domain: ${config.domain}`);
