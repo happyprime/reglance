@@ -1,0 +1,147 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
+/**
+ * The default viewports used when a config does not define its own.
+ */
+const DEFAULT_VIEWPORTS = [
+	{ name: 'desktop', width: 1920, height: 1080 },
+	{ name: 'mobile', width: 390, height: 844 },
+];
+
+/**
+ * The default pixelmatch options used for image comparison.
+ */
+export const DEFAULT_PIXELMATCH_OPTIONS = {
+	threshold: 0.1,
+	includeAA: false,
+	alpha: 0.1,
+	diffColor: [255, 0, 0], // Red for differences.
+	diffColorAlt: [0, 0, 255], // Blue for anti-aliased differences.
+	diffMask: false,
+};
+
+const DEFAULT_OUTPUT_DIR = '.reglance';
+
+/**
+ * Normalize a domain into an origin with a scheme and no trailing slash.
+ *
+ * Accepts bare hosts ("site.test"), hosts with a scheme
+ * ("https://site.test"), and trailing slashes, returning a consistent
+ * origin like "https://site.test".
+ *
+ * @param {string} domain - The domain to normalize.
+ * @returns {string} The normalized origin.
+ */
+export function normalizeDomain(domain) {
+	let value = domain.trim();
+
+	if (!/^https?:\/\//i.test(value)) {
+		value = `https://${value}`;
+	}
+
+	return value.replace(/\/+$/, '');
+}
+
+/**
+ * Join a domain origin and a path into a full URL.
+ *
+ * A path that is already an absolute URL is returned untouched so that a
+ * config can point individual entries at a different domain.
+ *
+ * @param {string} domain - The normalized domain origin.
+ * @param {string} pathname - The path or absolute URL.
+ * @returns {string} The full URL.
+ */
+export function buildUrl(domain, pathname) {
+	if (/^https?:\/\//i.test(pathname)) {
+		return pathname;
+	}
+
+	return `${domain}${pathname.startsWith('/') ? '' : '/'}${pathname}`;
+}
+
+/**
+ * Load and normalize a reglance config file.
+ *
+ * @param {object}  [options]            - Loader options.
+ * @param {string}  [options.configPath] - Path to the config file.
+ * @param {string}  [options.domain]     - Domain override (e.g. from a flag).
+ * @returns {object} The normalized config.
+ */
+export function loadConfig({ configPath = 'reglance.json', domain } = {}) {
+	const resolvedPath = path.resolve(configPath);
+
+	if (!fs.existsSync(resolvedPath)) {
+		throw new Error(
+			`Config file not found at ${resolvedPath}.\n` +
+				'Create a reglance.json in your project root. ' +
+				'See https://github.com/happyprime/reglance for the expected structure.'
+		);
+	}
+
+	let raw;
+	try {
+		raw = JSON.parse(fs.readFileSync(resolvedPath, 'utf8'));
+	} catch (error) {
+		throw new Error(`Could not parse ${resolvedPath}: ${error.message}`);
+	}
+
+	if (!raw.paths || Object.keys(raw.paths).length === 0) {
+		throw new Error('No "paths" configured in reglance.json.');
+	}
+
+	// The domain is only required for capture; control and compare operate on
+	// already-captured files, so a missing domain is allowed here.
+	const resolvedDomain = domain ?? raw.domain;
+	const origin = resolvedDomain ? normalizeDomain(resolvedDomain) : null;
+
+	const viewports = raw.viewports?.length ? raw.viewports : DEFAULT_VIEWPORTS;
+	const outputDir = path.resolve(raw.output || DEFAULT_OUTPUT_DIR);
+
+	// Build the list of targets to capture and compare.
+	const targets = Object.entries(raw.paths).map(([key, pathname]) => ({
+		key,
+		path: pathname,
+		url: origin ? buildUrl(origin, pathname) : pathname,
+	}));
+
+	return {
+		name: raw.name || (origin ? new URL(origin).host : 'reglance'),
+		domain: origin,
+		outputDir,
+		viewports,
+		targets,
+		pixelmatchOptions: {
+			...DEFAULT_PIXELMATCH_OPTIONS,
+			...raw.pixelmatchOptions,
+		},
+		// Directory paths derived from the output directory.
+		dirs: {
+			captures: path.join(outputDir, 'captures'),
+			capturesHtml: path.join(outputDir, 'captures', 'html'),
+			controls: path.join(outputDir, 'controls'),
+			controlsHtml: path.join(outputDir, 'controls', 'html'),
+			compares: path.join(outputDir, 'compares'),
+			reports: path.join(outputDir, 'reports'),
+			assets: path.join(outputDir, 'assets'),
+		},
+	};
+}
+
+/**
+ * Ensure the output directory exists and is ignored by git.
+ *
+ * Writes a self-contained .gitignore inside the output directory so that
+ * captures, diffs, and reports never get committed to the host project.
+ *
+ * @param {object} config - The normalized config.
+ */
+export function ensureOutputDir(config) {
+	fs.mkdirSync(config.outputDir, { recursive: true });
+
+	const gitignorePath = path.join(config.outputDir, '.gitignore');
+	if (!fs.existsSync(gitignorePath)) {
+		fs.writeFileSync(gitignorePath, '*\n');
+	}
+}

@@ -1,25 +1,46 @@
 {
 	"name": "reglance",
-	"version": "1.0.0",
+	"version": "2.0.0",
 	"description": "Visual regression at a glance.",
-	"keywords": [],
-	"author": "",
-	"license": "ISC",
-	"dependencies": {
-		"diff": "^8.0.3",
-		"open": "^11.0.0",
-		"pixelmatch": "^7.2.0",
-		"playwright": "^1.60.0"
+	"keywords": [
+		"visual-regression",
+		"screenshots",
+		"playwright",
+		"testing"
+	],
+	"homepage": "https://github.com/happyprime/reglance",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/happyprime/reglance.git"
 	},
-	"devDependencies": {
-		"@happyprime/eslint-config": "^1.0.0"
+	"author": "Happy Prime",
+	"license": "ISC",
+	"type": "module",
+	"bin": {
+		"reglance": "bin/reglance.mjs"
+	},
+	"files": [
+		"bin",
+		"src",
+		"templates",
+		"reglance.example.json"
+	],
+	"engines": {
+		"node": ">=20"
 	},
 	"scripts": {
 		"lint": "eslint .",
 		"fix": "eslint . --fix",
-		"capture": "node capture.mjs",
-		"compare": "node compare.mjs",
-		"control": "node control.mjs",
-		"serve": "node serve.mjs"
+		"postinstall": "playwright install chromium"
+	},
+	"dependencies": {
+		"diff": "^8.0.3",
+		"open": "^11.0.0",
+		"pixelmatch": "^7.2.0",
+		"playwright": "^1.60.0",
+		"pngjs": "^7.0.0"
+	},
+	"devDependencies": {
+		"@happyprime/eslint-config": "^1.0.0"
 	}
 }
