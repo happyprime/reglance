@@ -27,6 +27,39 @@ export function isLocalHost(host) {
 }
 
 /**
+ * Targets whose absolute-URL path points off the configured domain.
+ *
+ * A `paths` value that is a full URL bypasses `domain`/`--domain` and the
+ * browser navigates to it as-is. That is a documented convenience, but
+ * surfacing it makes off-domain (and potentially internal-network) capture a
+ * conscious choice rather than a silent one.
+ *
+ * @param {Array}       targets - The targets to inspect.
+ * @param {string|null} domain  - The configured domain origin.
+ * @returns {Array} Targets pointing at a different host.
+ */
+export function offDomainTargets(targets, domain) {
+	if (!domain) {
+		return [];
+	}
+
+	let host;
+	try {
+		host = new URL(domain).hostname;
+	} catch {
+		return [];
+	}
+
+	return targets.filter((target) => {
+		try {
+			return new URL(target.url).hostname !== host;
+		} catch {
+			return false;
+		}
+	});
+}
+
+/**
  * Scroll the full height of the page and back to the top.
  *
  * Triggers lazy-loaded images and other on-scroll behavior so the screenshot
@@ -224,6 +257,14 @@ export async function capture(config, options = {}) {
 	fs.mkdirSync(config.dirs.capturesHtml, { recursive: true });
 
 	const targets = filterTargets(config.targets, options.only);
+
+	const offDomain = offDomainTargets(targets, config.domain);
+	if (offDomain.length) {
+		console.warn(
+			`⚠️  ${offDomain.length} path(s) point off the configured domain and ` +
+				`will be captured as-is: ${offDomain.map((target) => target.key).join(', ')}.`
+		);
+	}
 
 	const totalShots = targets.length * config.viewports.length;
 	console.log(`Domain: ${config.domain}`);

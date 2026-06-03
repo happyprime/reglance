@@ -248,6 +248,17 @@ export function loadConfig({ configPath = 'reglance.json', domain } = {}) {
 export function ensureOutputDir(config) {
 	fs.mkdirSync(config.outputDir, { recursive: true });
 
+	// Fail fast with a clear message on a read-only or unwritable output dir,
+	// rather than partway through a run with an opaque fs error.
+	try {
+		fs.accessSync(config.outputDir, fs.constants.W_OK);
+	} catch {
+		throw new Error(
+			`Output directory is not writable: ${config.outputDir}. ` +
+				'Check the permissions on the directory and available disk space.'
+		);
+	}
+
 	const gitignorePath = path.join(config.outputDir, '.gitignore');
 	if (!fs.existsSync(gitignorePath)) {
 		fs.writeFileSync(gitignorePath, '*\n');

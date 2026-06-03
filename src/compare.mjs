@@ -21,6 +21,23 @@ import {
 const HTML_DIFF_MAX_BYTES = 2 * 1024 * 1024;
 
 /**
+ * Write a comparison artifact, surfacing the path and error code on failure
+ * (e.g. a full disk or a read-only output dir) instead of an opaque stack.
+ *
+ * @param {string}        file - The destination path.
+ * @param {string|Buffer} data - The contents to write.
+ */
+function writeArtifact(file, data) {
+	try {
+		fs.writeFileSync(file, data);
+	} catch (error) {
+		throw new Error(
+			`Failed to write ${file}: ${error.code || error.message}`
+		);
+	}
+}
+
+/**
  * Pad an image with transparent pixels onto a larger transparent canvas.
  *
  * Returns the image unchanged when it already matches the target dimensions,
@@ -87,7 +104,7 @@ export function compareSlug(config, target, viewport) {
 	);
 
 	const diffImage = path.join(dirs.compares, `${slug}-diff.png`);
-	fs.writeFileSync(diffImage, PNG.sync.write(diff));
+	writeArtifact(diffImage, PNG.sync.write(diff));
 
 	const totalPixels = maxWidth * maxHeight;
 	const diffPercentage = (numDiffPixels / totalPixels) * 100;
@@ -119,7 +136,7 @@ export function compareSlug(config, target, viewport) {
 	}
 
 	const htmlDiffPath = path.join(dirs.compares, `${slug}-html-diff.html`);
-	fs.writeFileSync(htmlDiffPath, htmlResult.html);
+	writeArtifact(htmlDiffPath, htmlResult.html);
 
 	const report = {
 		url: target.url,

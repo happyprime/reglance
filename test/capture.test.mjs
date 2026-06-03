@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { shouldFailRun, isLocalHost } from '../src/capture.mjs';
+import {
+	shouldFailRun,
+	isLocalHost,
+	offDomainTargets,
+} from '../src/capture.mjs';
 
 const FAILURES = [
 	{ slug: 'home-desktop', url: 'https://x.test/', reason: 'timeout' },
@@ -34,4 +38,26 @@ test('isLocalHost treats real and missing hosts as non-local', () => {
 	assert.equal(isLocalHost('staging.example.org'), false);
 	assert.equal(isLocalHost(null), false);
 	assert.equal(isLocalHost(''), false);
+});
+
+test('offDomainTargets flags absolute-URL paths on another host', () => {
+	const targets = [
+		{ key: 'home', url: 'https://site.test/' },
+		{ key: 'ext', url: 'https://other.test/page' },
+	];
+	const off = offDomainTargets(targets, 'https://site.test');
+	assert.deepEqual(
+		off.map((t) => t.key),
+		['ext']
+	);
+});
+
+test('offDomainTargets returns nothing when all targets match the domain', () => {
+	const targets = [{ key: 'home', url: 'https://site.test/' }];
+	assert.deepEqual(offDomainTargets(targets, 'https://site.test'), []);
+});
+
+test('offDomainTargets returns nothing without a configured domain', () => {
+	const targets = [{ key: 'home', url: 'https://site.test/' }];
+	assert.deepEqual(offDomainTargets(targets, null), []);
 });
