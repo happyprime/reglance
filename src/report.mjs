@@ -44,12 +44,28 @@ export function copyAssets(config) {
  * @returns {string} The escaped string.
  */
 function escapeHtml(str) {
-	return str
+	return String(str)
 		.replace(/&/g, '&amp;')
 		.replace(/</g, '&lt;')
 		.replace(/>/g, '&gt;')
 		.replace(/"/g, '&quot;')
 		.replace(/'/g, '&#039;');
+}
+
+/**
+ * Serialize a value for embedding in an inline <script>.
+ *
+ * JSON.stringify does not neutralize `</script>` or the U+2028/U+2029 line
+ * separators, which can break out of the script element, so escape them.
+ *
+ * @param {*} value - The value to serialize.
+ * @returns {string} Script-safe JSON.
+ */
+function jsonForScript(value) {
+	return JSON.stringify(value)
+		.replace(/</g, '\\u003c')
+		.replace(/\u2028/g, '\\u2028')
+		.replace(/\u2029/g, '\\u2029');
 }
 
 /**
@@ -186,11 +202,13 @@ export function generateIndex(config, reports) {
 						? 'medium'
 						: 'low';
 			const htmlDiffClass = report.htmlHasChanges ? 'high' : 'low';
+			const url = escapeHtml(report.url);
+			const viewportName = escapeHtml(report.viewport.name);
 
 			return `
-			<tr data-url="${report.url}" data-viewport="${report.viewport.name}" data-diff="${report.diffPercentage}" data-index="${index}">
-				<td class="url-cell" title="${report.url}">${report.url}</td>
-				<td>${report.viewport.name} (${report.viewport.width}x${report.viewport.height})</td>
+			<tr data-url="${url}" data-viewport="${viewportName}" data-diff="${report.diffPercentage}" data-index="${index}">
+				<td class="url-cell" title="${url}">${url}</td>
+				<td>${viewportName} (${report.viewport.width}x${report.viewport.height})</td>
 				<td class="diff-percentage ${diffClass}"><span class="visually-hidden">${diffClass} difference: </span>${report.diffPercentage.toFixed(2)}%</td>
 				<td class="diff-percentage ${htmlDiffClass}">${report.htmlHasChanges ? 'Yes' : 'No'}</td>
 				<td><a href="${rel(report.reportPath)}">View Report</a></td>
@@ -201,15 +219,15 @@ export function generateIndex(config, reports) {
 		.join('');
 
 	const viewportOptions = viewports
-		.map(
-			(v) =>
-				`<option value="${v.name}">${v.name} (${v.width}x${v.height})</option>`
-		)
+		.map((v) => {
+			const vn = escapeHtml(v.name);
+			return `<option value="${vn}">${vn} (${v.width}x${v.height})</option>`;
+		})
 		.join('\n\t\t\t\t');
 
 	const template = readTemplate('index.html');
 	const indexHtml = template
-		.replaceAll('{name}', name)
+		.replaceAll('{name}', escapeHtml(name))
 		.replaceAll('{threshold}', String(pixelmatchOptions.threshold))
 		.replaceAll('{includeAA}', pixelmatchOptions.includeAA ? 'Yes' : 'No')
 		.replaceAll('{alpha}', String(pixelmatchOptions.alpha))
@@ -217,7 +235,7 @@ export function generateIndex(config, reports) {
 		.replaceAll('{viewportOptions}', viewportOptions)
 		.replaceAll('{rows}', rows)
 		.replaceAll('{diffViewer}', diffViewer)
-		.replaceAll('{diffData}', JSON.stringify(diffData));
+		.replaceAll('{diffData}', jsonForScript(diffData));
 
 	const indexPath = path.join(dirs.reports, 'index.html');
 	fs.writeFileSync(indexPath, indexHtml);

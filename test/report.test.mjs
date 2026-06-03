@@ -81,6 +81,27 @@ test('generateReport gives the reveal slider ARIA slider semantics', () => {
 	assert.match(html, /aria-valuenow="50"/);
 });
 
+test('generateIndex escapes config/URL values and hardens the diffData sink', () => {
+	const config = tempConfig();
+	config.name = '<img src=x onerror=alert(1)>';
+	const report = sampleReport(config, {
+		url: 'https://site.test/?a=1&b=</script>',
+		urlKey: '</script><script>alert(1)</script>',
+	});
+	const html = fs.readFileSync(generateIndex(config, [report]), 'utf8');
+
+	// Config name is escaped in HTML contexts.
+	assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
+	// The URL's & and angle brackets are escaped in the row.
+	assert.match(
+		html,
+		/data-url="https:\/\/site\.test\/\?a=1&amp;b=&lt;\/script&gt;"/
+	);
+	// The diffData JSON sink neutralizes </script> rather than emitting it raw.
+	assert.ok(!html.includes('</script><script>alert(1)'));
+	assert.ok(html.includes('\\u003c/script>\\u003cscript>alert(1)'));
+});
+
 test('generateIndex makes sortable headers keyboard-operable with sort state', () => {
 	const config = tempConfig();
 	const html = fs.readFileSync(
