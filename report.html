@@ -4,11 +4,29 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Image Comparison Slider with Diff Toggle</title>
+	<title>{property} - {urlKey} - {viewportName} - Visual Comparison</title>
 	<link rel="stylesheet" href="../assets/style.css">
 </head>
 
 <body>
+	<div class="report-header">
+		<div class="report-header-main">
+			<a href="{property}/index.html" class="back-link">&larr; Back to {property}</a>
+			<h1>{property} &mdash; {urlKey}</h1>
+			<div class="report-meta">
+				<span class="meta-item">{viewportName} ({viewportWidth}&times;{viewportHeight})</span>
+				<span class="meta-item diff-badge">{diffPercentage}% different</span>
+			</div>
+		</div>
+		<details class="report-settings">
+			<summary>Comparison Settings</summary>
+			<div class="report-settings-grid">
+				<span>Threshold: {threshold}</span>
+				<span>Anti-Aliasing: {includeAA}</span>
+				<span>Alpha: {alpha}</span>
+			</div>
+		</details>
+	</div>
 	<div class="compare">
 		<div class="image-container">
 			<img id="baseImage" src="{secondImage}" alt="Second Image">

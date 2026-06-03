@@ -1,154 +1,185 @@
-<!DOCTYPE html>
-<html>
-<head>
-	<title>Diff Viewer</title>
-	<style>
-		.modal {
-			display: none;
-			position: fixed;
-			top: 0;
-			left: 0;
-			width: 100%;
-			height: 100%;
-			background: rgba(0, 0, 0, 0.9);
-			z-index: 1000;
-		}
+<style>
+	.modal {
+		display: none;
+		position: fixed;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		background: rgba(0, 0, 0, 0.9);
+		z-index: 1000;
+	}
 
-		.modal-content {
-			position: relative;
-			width: 100%;
-			height: 100%;
-			display: flex;
-			flex-direction: column;
-		}
+	.modal-content {
+		position: relative;
+		width: 100%;
+		height: 100%;
+		display: flex;
+		flex-direction: column;
+	}
 
-		.modal-header {
-			background: #333;
-			color: white;
-			padding: 1rem;
-			display: flex;
-			justify-content: space-between;
-			align-items: center;
-		}
+	.modal-header {
+		background: #333;
+		color: white;
+		padding: 1rem;
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
 
-		.modal-title {
-			font-size: 1.2rem;
-			font-weight: bold;
-		}
+	.modal-title {
+		font-size: 1.2rem;
+		font-weight: bold;
+	}
 
-		.modal-close {
-			background: none;
-			border: none;
-			color: white;
-			font-size: 1.5rem;
-			cursor: pointer;
-		}
+	.modal-counter {
+		font-size: 0.9rem;
+		color: #aaa;
+		margin-left: 1rem;
+	}
 
-		.modal-body {
-			flex: 1;
-			display: flex;
-			justify-content: center;
-			align-items: center;
-			overflow: auto;
-		}
+	.modal-diff-pct {
+		font-size: 0.9rem;
+		color: #ff6b6b;
+		margin-left: 0.5rem;
+	}
 
-		.modal-image {
-			max-width: 100%;
-			max-height: 100%;
-			object-fit: contain;
-		}
+	.modal-close {
+		background: none;
+		border: none;
+		color: white;
+		font-size: 1.5rem;
+		cursor: pointer;
+	}
 
-		.modal-nav {
-			position: absolute;
-			top: 50%;
-			transform: translateY(-50%);
-			background: rgba(0, 0, 0, 0.5);
-			color: white;
-			border: none;
-			padding: 1rem;
-			cursor: pointer;
-			font-size: 1.5rem;
-		}
+	.modal-body {
+		flex: 1;
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		overflow: auto;
+	}
 
-		.modal-prev {
-			left: 0;
-		}
+	.modal-image {
+		max-width: 100%;
+		max-height: 100%;
+		object-fit: contain;
+	}
 
-		.modal-next {
-			right: 0;
-		}
+	.modal-body.loading .modal-image {
+		opacity: 0.3;
+	}
 
-		.modal-nav:hover {
-			background: rgba(0, 0, 0, 0.8);
-		}
-	</style>
-</head>
-<body>
-	<div id="diffModal" class="modal">
-		<div class="modal-content">
-			<div class="modal-header">
-				<div class="modal-title" id="modalTitle"></div>
-				<button class="modal-close" onclick="closeModal()">&times;</button>
-			</div>
-			<div class="modal-body">
-				<button class="modal-nav modal-prev" onclick="navigateDiff(-1)">&larr;</button>
-				<img id="modalImage" class="modal-image" src="" alt="Diff Image">
-				<button class="modal-nav modal-next" onclick="navigateDiff(1)">&rarr;</button>
-			</div>
+	.modal-body.loading::after {
+		content: '';
+		position: absolute;
+		width: 40px;
+		height: 40px;
+		border: 4px solid rgba(255, 255, 255, 0.3);
+		border-top-color: white;
+		border-radius: 50%;
+		animation: spin 0.8s linear infinite;
+	}
+
+	@keyframes spin {
+		to { transform: rotate(360deg); }
+	}
+
+	.modal-nav {
+		position: absolute;
+		top: 50%;
+		transform: translateY(-50%);
+		background: rgba(0, 0, 0, 0.5);
+		color: white;
+		border: none;
+		padding: 1rem;
+		cursor: pointer;
+		font-size: 1.5rem;
+	}
+
+	.modal-prev {
+		left: 0;
+	}
+
+	.modal-next {
+		right: 0;
+	}
+
+	.modal-nav:hover {
+		background: rgba(0, 0, 0, 0.8);
+	}
+</style>
+
+<div id="diffModal" class="modal">
+	<div class="modal-content">
+		<div class="modal-header">
+			<div class="modal-title" id="modalTitle"></div>
+			<span class="modal-counter" id="modalCounter"></span>
+			<span class="modal-diff-pct" id="modalDiffPct"></span>
+			<button class="modal-close" onclick="closeModal()">&times;</button>
+		</div>
+		<div class="modal-body" id="modalBody">
+			<button class="modal-nav modal-prev" onclick="navigateDiff(-1)">&larr;</button>
+			<img id="modalImage" class="modal-image" src="" alt="Diff Image" onload="document.getElementById('modalBody').classList.remove('loading')">
+			<button class="modal-nav modal-next" onclick="navigateDiff(1)">&rarr;</button>
 		</div>
 	</div>
+</div>
 
-	<script>
-		let currentDiffIndex = 0;
-		let diffs = [];
+<script>
+	let currentDiffIndex = 0;
+	let diffs = [];
 
-		function openModal(diffData, index) {
-			currentDiffIndex = index;
-			diffs = diffData;
-			const modal = document.getElementById('diffModal');
-			const modalTitle = document.getElementById('modalTitle');
-			const modalImage = document.getElementById('modalImage');
+	function openModal(diffData, index) {
+		currentDiffIndex = index;
+		diffs = diffData;
+		const modal = document.getElementById('diffModal');
+		const modalTitle = document.getElementById('modalTitle');
+		const modalImage = document.getElementById('modalImage');
 
-			modal.style.display = 'block';
-			updateModalContent();
+		modal.style.display = 'block';
+		updateModalContent();
+	}
+
+	function closeModal() {
+		document.getElementById('diffModal').style.display = 'none';
+	}
+
+	function navigateDiff(direction) {
+		currentDiffIndex = (currentDiffIndex + direction + diffs.length) % diffs.length;
+		updateModalContent();
+	}
+
+	function updateModalContent() {
+		const currentDiff = diffs[currentDiffIndex];
+		document.getElementById('modalTitle').textContent =
+			`${currentDiff.property} - ${currentDiff.urlKey} (${currentDiff.viewport.name})`;
+		document.getElementById('modalCounter').textContent =
+			`(${currentDiffIndex + 1} of ${diffs.length})`;
+		document.getElementById('modalDiffPct').textContent =
+			`${currentDiff.diffPercentage.toFixed(2)}%`;
+		document.getElementById('modalBody').classList.add('loading');
+		document.getElementById('modalImage').src = currentDiff.diffUrl;
+	}
+
+	// Close modal when clicking outside
+	window.onclick = function(event) {
+		const modal = document.getElementById('diffModal');
+		if (event.target === modal) {
+			closeModal();
 		}
+	}
 
-		function closeModal() {
-			document.getElementById('diffModal').style.display = 'none';
-		}
-
-		function navigateDiff(direction) {
-			currentDiffIndex = (currentDiffIndex + direction + diffs.length) % diffs.length;
-			updateModalContent();
-		}
-
-		function updateModalContent() {
-			const currentDiff = diffs[currentDiffIndex];
-			document.getElementById('modalTitle').textContent =
-				`${currentDiff.property} - ${currentDiff.urlKey} (${currentDiff.viewport.name})`;
-			document.getElementById('modalImage').src = currentDiff.diffUrl;
-		}
-
-		// Close modal when clicking outside
-		window.onclick = function(event) {
-			const modal = document.getElementById('diffModal');
-			if (event.target === modal) {
+	// Handle keyboard navigation
+	document.addEventListener('keydown', function(event) {
+		if (document.getElementById('diffModal').style.display === 'block') {
+			if (event.key === 'ArrowLeft') {
+				navigateDiff(-1);
+			} else if (event.key === 'ArrowRight') {
+				navigateDiff(1);
+			} else if (event.key === 'Escape') {
 				closeModal();
 			}
 		}
-
-		// Handle keyboard navigation
-		document.addEventListener('keydown', function(event) {
-			if (document.getElementById('diffModal').style.display === 'block') {
-				if (event.key === 'ArrowLeft') {
-					navigateDiff(-1);
-				} else if (event.key === 'ArrowRight') {
-					navigateDiff(1);
-				} else if (event.key === 'Escape') {
-					closeModal();
-				}
-			}
-		});
-	</script>
-</body>
-</html>
+	});
+</script>

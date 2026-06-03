@@ -1,0 +1,160 @@
+body {
+	font-family: sans-serif;
+	margin: 2rem;
+}
+
+table {
+	border-collapse: collapse;
+	width: 100%;
+}
+
+th, td {
+	padding: 0.5rem;
+	border: 1px solid #ddd;
+	text-align: left;
+}
+
+th {
+	background: #f5f5f5;
+	position: sticky;
+	top: 0;
+	z-index: 1;
+}
+
+tr:hover {
+	background: #f9f9f9;
+}
+
+a {
+	color: #0066cc;
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+.diff-percentage {
+	font-weight: bold;
+}
+
+.diff-percentage.high {
+	color: #d32f2f;
+}
+
+.diff-percentage.medium {
+	color: #f57c00;
+}
+
+.diff-percentage.low {
+	color: #388e3c;
+}
+
+.settings {
+	background: #f8f9fa;
+	padding: 1rem;
+	border-radius: 4px;
+	margin-bottom: 1.5rem;
+	font-size: 0.9em;
+}
+
+.settings h2 {
+	margin: 0 0 0.5rem 0;
+	font-size: 1.1em;
+	color: #333;
+}
+
+.settings-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+	gap: 1rem;
+}
+
+.setting-item {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 0.5rem;
+	background: white;
+	border-radius: 4px;
+}
+
+.setting-label {
+	color: #666;
+}
+
+.setting-value {
+	font-weight: bold;
+	color: #333;
+}
+
+.table-wrapper {
+	overflow-x: auto;
+	-webkit-overflow-scrolling: touch;
+}
+
+td.url-cell {
+	max-width: 300px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.filter-bar {
+	display: flex;
+	gap: 1rem;
+	margin-bottom: 1rem;
+	flex-wrap: wrap;
+	align-items: center;
+}
+
+.filter-bar label {
+	font-size: 0.9em;
+	color: #555;
+}
+
+.filter-bar input,
+.filter-bar select {
+	padding: 0.4rem 0.6rem;
+	border: 1px solid #ccc;
+	border-radius: 4px;
+	font-size: 0.9em;
+}
+
+.filter-bar input {
+	min-width: 200px;
+}
+
+th[data-sort] {
+	cursor: pointer;
+	user-select: none;
+}
+
+th[data-sort]:hover {
+	background: #e8e8e8;
+}
+
+th .sort-indicator {
+	margin-left: 0.3rem;
+	font-size: 0.8em;
+	color: #999;
+}
+
+@media (max-width: 900px) {
+	body {
+		margin: 1rem;
+	}
+
+	.settings-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.filter-bar {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.filter-bar input {
+		min-width: unset;
+	}
+}
