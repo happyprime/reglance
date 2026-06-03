@@ -10,7 +10,7 @@ visual and HTML differences. It installs per-project and is configured with one
 1. Install (downloads a headless Chromium on install):
 
    ```bash
-   npm install happyprime/reglance --save-dev
+   npm install @happyprime/reglance --save-dev
    ```
 
 2. Add a `reglance.json` to the project root. List page paths relative to a
