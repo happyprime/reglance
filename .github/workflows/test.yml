@@ -12,8 +12,8 @@ jobs:
     strategy:
       matrix:
         node-version:
-          - 20
           - 22
+          - 24
     env:
       # The unit tests run against in-memory PNGs and config files, so the
       # Chromium download from the postinstall script is not needed here.
