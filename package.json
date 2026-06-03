@@ -1,5 +1,5 @@
 {
-	"name": "reglance",
+	"name": "@happyprime/reglance",
 	"version": "2.0.0",
 	"description": "Visual regression at a glance.",
 	"keywords": [
@@ -14,7 +14,7 @@
 		"url": "git+https://github.com/happyprime/reglance.git"
 	},
 	"author": "Happy Prime",
-	"license": "ISC",
+	"license": "MIT",
 	"type": "module",
 	"bin": {
 		"reglance": "bin/reglance.mjs"
