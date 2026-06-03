@@ -209,6 +209,28 @@ test('loadConfig merges pixelmatch options over the defaults', () => {
 	);
 });
 
+test('loadConfig falls back to default timeouts', () => {
+	const configPath = writeConfig({
+		domain: 'site.test',
+		paths: { home: '/' },
+	});
+	const config = loadConfig({ configPath });
+	assert.equal(config.timeouts.goto, 15000);
+	assert.equal(config.timeouts.settle, 8000);
+});
+
+test('loadConfig merges configured timeouts over the defaults', () => {
+	const configPath = writeConfig({
+		domain: 'site.test',
+		paths: { home: '/' },
+		timeouts: { settle: 20000 },
+	});
+	const config = loadConfig({ configPath });
+	// Overridden value wins; the unspecified one keeps its default.
+	assert.equal(config.timeouts.settle, 20000);
+	assert.equal(config.timeouts.goto, 15000);
+});
+
 test('loadConfig derives a name from the domain host when unset', () => {
 	const configPath = writeConfig({
 		domain: 'https://site.test',

@@ -1,75 +1,37 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright';
-import { filterTargets } from './config.mjs';
-
-/**
- * Wait for the network to be idle, with a hard cap on how long to wait.
- *
- * @param {import('playwright').Page} page          - The page to watch.
- * @param {number}                    [idleTime]    - Quiet time (ms) that counts as idle.
- * @param {number}                    [maxWaitTime] - Maximum time (ms) to wait.
- */
-async function waitForNetworkIdle(page, idleTime = 500, maxWaitTime = 3000) {
-	const startTime = Date.now();
-	let lastActivity = Date.now();
-	let pendingRequests = 0;
-
-	const onRequest = () => {
-		pendingRequests++;
-		lastActivity = Date.now();
-	};
-	const onSettled = () => {
-		pendingRequests = Math.max(0, pendingRequests - 1);
-		lastActivity = Date.now();
-	};
-
-	page.on('request', onRequest);
-	page.on('response', onSettled);
-	page.on('requestfailed', onSettled);
-
-	try {
-		while (Date.now() - startTime < maxWaitTime) {
-			if (
-				pendingRequests === 0 &&
-				Date.now() - lastActivity >= idleTime
-			) {
-				break;
-			}
-			await page.waitForTimeout(100);
-		}
-	} finally {
-		page.off('request', onRequest);
-		page.off('response', onSettled);
-		page.off('requestfailed', onSettled);
-	}
-}
+import { filterTargets, DEFAULT_TIMEOUTS } from './config.mjs';
 
 /**
  * Scroll the full height of the page and back to the top.
  *
- * This triggers lazy-loaded images and other on-scroll behavior so the
- * screenshot captures the page as a visitor would see it.
+ * Triggers lazy-loaded images and other on-scroll behavior so the screenshot
+ * captures the page as a visitor would see it. Scrolls to the bottom and waits
+ * for the page to grow, repeating until the height stabilizes — so a short page
+ * settles almost instantly while a tall one keeps going as content loads,
+ * rather than paying a fixed per-step delay across the whole height.
  *
  * @param {import('playwright').Page} page - The page to scroll.
  */
 async function autoScroll(page) {
 	await page.evaluate(async () => {
-		await new Promise((resolve) => {
-			let totalHeight = 0;
-			const distance = 500;
-			const timer = setInterval(() => {
-				const scrollHeight = document.body.scrollHeight;
-				window.scrollBy(0, distance);
-				totalHeight += distance;
+		const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+		let lastHeight = -1;
 
-				if (totalHeight >= scrollHeight) {
-					clearInterval(timer);
-					window.scrollTo(0, 0);
-					resolve();
-				}
-			}, 100);
-		});
+		// Cap iterations so a page that grows on every scroll (infinite feed)
+		// can't loop forever.
+		for (let i = 0; i < 100; i++) {
+			const height = document.body.scrollHeight;
+			if (height === lastHeight) {
+				break;
+			}
+			lastHeight = height;
+			window.scrollTo(0, height);
+			await sleep(50);
+		}
+
+		window.scrollTo(0, 0);
 	});
 }
 
@@ -88,7 +50,11 @@ async function autoScroll(page) {
  * @returns {Promise<Array<{ slug: string, url: string, reason: string }>>} Failed slugs.
  */
 async function captureTarget(browser, target, viewports, dirs, options) {
-	const { skipReload = false, retryCount = 2 } = options;
+	const {
+		skipReload = false,
+		retryCount = 2,
+		timeouts = DEFAULT_TIMEOUTS,
+	} = options;
 	const context = await browser.newContext();
 	const page = await context.newPage();
 	const failures = [];
@@ -131,7 +97,7 @@ async function captureTarget(browser, target, viewports, dirs, options) {
 
 						const gotoOptions = {
 							waitUntil: 'networkidle',
-							timeout: 15000,
+							timeout: timeouts.goto,
 						};
 
 						if (i === 0 || attempts > 0) {
@@ -163,7 +129,15 @@ async function captureTarget(browser, target, viewports, dirs, options) {
 			}
 
 			await autoScroll(page);
-			await waitForNetworkIdle(page, 500, 3000);
+			// A single event-driven settle after scrolling, bounded by the
+			// configurable timeout: near-instant on a page that is already
+			// quiet, and long enough for lazy assets on a slow one. (The goto
+			// above already waited for the initial network idle.)
+			await page
+				.waitForLoadState('networkidle', { timeout: timeouts.settle })
+				.catch(() => {
+					// Slow/never-idle page; screenshot what we have.
+				});
 
 			const imagePath = path.join(dirs.captures, `${slug}.png`);
 			await page.screenshot({ path: imagePath, fullPage: true });
@@ -263,7 +237,7 @@ export async function capture(config, options = {}) {
 					target,
 					config.viewports,
 					config.dirs,
-					{ skipReload }
+					{ skipReload, timeouts: config.timeouts }
 				);
 				failures.push(...targetFailures);
 			}

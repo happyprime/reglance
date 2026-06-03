@@ -24,6 +24,12 @@ export const DEFAULT_PIXELMATCH_OPTIONS = {
 const DEFAULT_OUTPUT_DIR = '.reglance';
 
 /**
+ * Default capture timeouts (ms). `goto` bounds initial navigation; `settle`
+ * bounds the post-scroll network-idle wait that lets lazy assets load.
+ */
+export const DEFAULT_TIMEOUTS = { goto: 15000, settle: 8000 };
+
+/**
  * Normalize a domain into an origin with a scheme and no trailing slash.
  *
  * Accepts bare hosts ("site.test"), hosts with a scheme
@@ -213,6 +219,10 @@ export function loadConfig({ configPath = 'reglance.json', domain } = {}) {
 		pixelmatchOptions: {
 			...DEFAULT_PIXELMATCH_OPTIONS,
 			...raw.pixelmatchOptions,
+		},
+		timeouts: {
+			...DEFAULT_TIMEOUTS,
+			...raw.timeouts,
 		},
 		// Directory paths derived from the output directory.
 		dirs: {
