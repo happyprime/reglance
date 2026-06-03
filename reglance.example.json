@@ -1,0 +1,19 @@
+{
+	"name": "My Site",
+	"domain": "https://site.test",
+	"paths": {
+		"home": "/",
+		"blog": "/blog",
+		"single-post": "/blog/single-post"
+	},
+	"viewports": [
+		{ "name": "desktop", "width": 1920, "height": 1080 },
+		{ "name": "mobile", "width": 390, "height": 844 }
+	],
+	"pixelmatchOptions": {
+		"threshold": 0.1,
+		"includeAA": false,
+		"alpha": 0.1,
+		"diffColor": [255, 0, 0]
+	}
+}

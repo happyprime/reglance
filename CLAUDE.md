@@ -4,105 +4,73 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Reglance is a visual regression testing tool built with Node.js and Playwright. It captures full-page screenshots of websites across different viewports, compares them with baseline images (controls), and generates detailed HTML reports highlighting visual differences.
+Reglance is a visual regression tool built with Node.js and Playwright,
+distributed as an npm package and installed per-project as a dev dependency. It
+captures full-page screenshots across viewports, compares them against a
+baseline (controls) with pixelmatch, and generates an interactive HTML report
+highlighting visual and HTML differences. The report is a plain HTML file that
+`compare` opens via `file://` — there is no report server.
 
-## Core Workflow Commands
-
-### Capturing Screenshots
-```bash
-npm run capture <property>
-```
-- Uses Playwright to capture full-page screenshots
-- Saves images to `captures/` directory
-- Also saves HTML content to `captures/html/`
-- Scrolls through entire page before capturing to ensure all content loads
-
-### Setting Control Baselines
-```bash
-npm run control <property>
-```
-- Moves current captures from `captures/` to `controls/` directory
-- These become the baseline images for future comparisons
-- Both images and HTML files are moved
-
-### Comparing Images
-```bash
-npm run compare <property>
-```
-- Compares latest captures with controls using pixelmatch
-- Generates diff images showing pixel differences
-- Creates comprehensive HTML reports with visual comparison sliders
-- Opens comparison report in browser automatically
-- Can also compare individual image slugs: `npm run compare <slug>`
-
-### Code Quality
-```bash
-npm run lint    # Check code style with ESLint
-npm run fix     # Auto-fix ESLint issues
-```
-
-## Configuration System
-
-Properties are configured in `config.json` with the following structure:
-
-```json
-{
-  "defaults": {
-    "viewports": [...],
-    "report_domain": "https://reglance.test"
-  },
-  "property-name": {
-    "urls": {
-      "page-name": "https://example.com/page"
-    },
-    "viewports": [...],  // Optional, uses defaults if not specified
-    "pixelmatchOptions": {...}  // Optional comparison settings
-  }
-}
-```
-
-### Viewport Configuration
-- Default viewports: desktop (1920x1080) and mobile (390x844)
-- Properties can override with custom viewports (tablet, laptop, etc.)
-- Each viewport generates separate screenshots and comparisons
-
-### Pixelmatch Options
-Properties can customize image comparison sensitivity:
-- `threshold`: Matching threshold (0-1, lower = more sensitive)
-- `includeAA`: Include anti-aliasing in comparison
-- `alpha`: Alpha threshold for transparency
-- `diffColor`: RGB color for highlighting differences
+It is published from `happyprime/reglance` and installed with
+`npm install happyprime/reglance --save-dev`, which exposes a `reglance` binary.
 
 ## Architecture
 
-### Core Scripts
-- `capture.mjs`: Playwright-based screenshot capture with auto-scrolling
-- `compare.mjs`: Image comparison using pixelmatch, HTML diff generation
-- `control.mjs`: Baseline management (moving captures to controls)
+The package is a thin CLI over a set of focused modules:
 
-### File Naming Convention
-Files follow pattern: `{property}-{urlKey}-{viewport}.png`
-Example: `pinchofyum-home-desktop.png`
+- `bin/reglance.mjs` — CLI entry point. Parses the command + flags with
+  `node:util` `parseArgs`, loads the config, and dispatches to a command module.
+- `src/config.mjs` — Loads and normalizes `reglance.json`. Resolves the domain
+  (config or `--domain` flag), builds the list of capture targets
+  (`{ key, path, url }`), and derives output directory paths. The domain is
+  optional here because `control`/`compare` work on files; `capture` enforces it.
+- `src/capture.mjs` — Playwright capture with parallel contexts, retries,
+  auto-scroll, and network-idle waiting. Exports `capture(config, options)`.
+- `src/control.mjs` — Moves the latest captures into `controls/`.
+- `src/compare.mjs` — pixelmatch comparison + HTML diffing. Exports
+  `compare(config, options)`; opens the generated report via `file://`.
+- `src/report.mjs` — All HTML/report generation and asset copying, driven by the
+  templates in `templates/`.
 
-### Directory Structure
-- `captures/`: Latest screenshots and HTML snapshots
-- `controls/`: Baseline images and HTML for comparison
-- `compares/`: Generated diff images and HTML diff reports
-- `reports/`: Comprehensive comparison reports with interactive viewers
-- `assets/`: JavaScript and CSS for report interfaces
+Command modules take the normalized `config` object and an `options` object;
+they never read `process.argv` or the config file themselves.
 
-### Report Generation
-- Individual comparison reports for each image pair
-- Property-level index pages with sortable results tables
-- Interactive diff viewer with modal overlay and keyboard navigation
-- HTML diff reports showing markup changes line-by-line
-- Visual comparison sliders for before/after image inspection
+## Configuration
+
+Each consuming project has its own `reglance.json` (see `README.md` and
+`reglance.example.json`). Paths are stored relative to a `domain` so a shared
+config works across developers who each run against their own local domain.
+
+## Output
+
+All artifacts are written under the configured output directory (`.reglance` by
+default), which gets a generated `.gitignore` so nothing is committed to the host
+project. Subdirectories: `captures/`, `controls/`, `compares/`, `reports/`,
+`assets/`.
+
+## Templates
+
+`templates/` ships with the package (listed in `package.json` `files`):
+
+- `report.html` — Per-comparison visual report with a before/after slider.
+- `index.html` — Report index with filtering, sorting, and a diff modal.
+- `diff-viewer.html` — Diff modal markup/JS injected into the index.
+- `html-diff.html` — HTML diff report for a single comparison.
+- `assets/` — `style.css`, `index-style.css`, `script.js`, copied into the
+  output directory at compare time.
+
+Placeholders use `{name}` style tokens replaced via `String.replaceAll`.
+
+## File naming
+
+Captures, controls, diffs, and reports are named `{pathKey}-{viewport}` (e.g.
+`home-desktop`). There is no project prefix; each project has its own output
+directory.
 
 ## Development Notes
 
-- Uses @happyprime/eslint-config for consistent code style
-- Tab indentation for JavaScript, space indentation for YAML
-- Playwright runs with certificate error ignoring for local development
-- Network idle timeout of 10 seconds with fallback screenshot capture
-- Images are automatically padded to match heights for comparison
-- Reports include pixelmatch configuration details for transparency
+- ES modules throughout (`"type": "module"`); `.cjs` for CommonJS config files.
+- Uses `@happyprime/eslint-config`; tabs for JS, spaces for YAML.
+- `npm run lint` / `npm run fix` for style.
+- Playwright runs with certificate errors ignored for local `.test` domains.
+- `postinstall` downloads headless Chromium.
