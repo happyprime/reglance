@@ -4,14 +4,25 @@ import { fileURLToPath } from 'node:url';
 
 const TEMPLATES_DIR = fileURLToPath(new URL('../templates', import.meta.url));
 
+const templateCache = new Map();
+
 /**
  * Read a template file that ships with the package.
+ *
+ * Memoized: templates don't change during a run, and these are read once per
+ * comparison, so caching avoids hundreds of redundant blocking reads (and
+ * filesystem contention once compare is parallelized).
  *
  * @param {string} name - The template filename.
  * @returns {string} The template contents.
  */
 function readTemplate(name) {
-	return fs.readFileSync(path.join(TEMPLATES_DIR, name), 'utf8');
+	let cached = templateCache.get(name);
+	if (cached === undefined) {
+		cached = fs.readFileSync(path.join(TEMPLATES_DIR, name), 'utf8');
+		templateCache.set(name, cached);
+	}
+	return cached;
 }
 
 /**
