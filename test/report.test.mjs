@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { generateIndex, generateReport } from '../src/report.mjs';
+import {
+	generateIndex,
+	generateReport,
+	generateHtmlDiff,
+} from '../src/report.mjs';
 
 /**
  * Build a minimal normalized-config shape with a real reports directory.
@@ -140,6 +144,36 @@ test('generateReport escapes config-derived values in image alts', () => {
 	);
 	// The quote/angle bracket are escaped, not injected raw into the attribute.
 	assert.match(html, /alt="Second capture of a&quot;b&lt;c at desktop"/);
+});
+
+test('generateReport escapes name/urlKey in the per-comparison template', () => {
+	const config = tempConfig();
+	config.name = '<b>site</b>';
+	const html = fs.readFileSync(
+		generateReport(config, sampleReport(config, { urlKey: '<x>' })),
+		'utf8'
+	);
+	assert.match(html, /&lt;b&gt;site&lt;\/b&gt;/);
+	assert.match(html, /&lt;x&gt;/);
+	assert.doesNotMatch(html, /<h1>[^<]*<b>site<\/b>/);
+});
+
+test('generateHtmlDiff escapes the name and urlKey metadata', () => {
+	const { html } = generateHtmlDiff(
+		'a\n',
+		'b\n',
+		{
+			name: '<img onerror=x>',
+			urlKey: '<k>',
+			viewport: { name: 'desktop', width: 1, height: 1 },
+		},
+		(x, y) => [
+			{ removed: true, value: x },
+			{ added: true, value: y },
+		]
+	);
+	assert.match(html, /&lt;img onerror=x&gt;/);
+	assert.match(html, /&lt;k&gt;/);
 });
 
 test('generateReport declares image dimensions and async decoding', () => {

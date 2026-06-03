@@ -103,9 +103,9 @@ export function generateHtmlDiff(html1, html2, context, diffLines) {
 
 	const template = readTemplate('html-diff.html');
 	const html = template
-		.replaceAll('{name}', name)
-		.replaceAll('{urlKey}', urlKey)
-		.replaceAll('{viewportName}', viewport.name)
+		.replaceAll('{name}', escapeHtml(name))
+		.replaceAll('{urlKey}', escapeHtml(urlKey))
+		.replaceAll('{viewportName}', escapeHtml(viewport.name))
 		.replaceAll('{viewportWidth}', String(viewport.width))
 		.replaceAll('{viewportHeight}', String(viewport.height))
 		.replaceAll('{status}', hasChanges ? 'Changes detected' : 'No changes')
@@ -137,11 +137,11 @@ export function generateReport(config, report) {
 	const overlayAlt = `Original (control) capture of ${where}`;
 
 	template = template
-		.replaceAll('{name}', name)
+		.replaceAll('{name}', escapeHtml(name))
 		.replaceAll('{baseAlt}', baseAlt)
 		.replaceAll('{overlayAlt}', overlayAlt)
-		.replaceAll('{urlKey}', urlKey)
-		.replaceAll('{viewportName}', viewport.name)
+		.replaceAll('{urlKey}', escapeHtml(urlKey))
+		.replaceAll('{viewportName}', escapeHtml(viewport.name))
 		.replaceAll('{viewportWidth}', String(viewport.width))
 		.replaceAll('{viewportHeight}', String(viewport.height))
 		.replaceAll('{originalImage}', rel(controlImage))
