@@ -15,14 +15,22 @@ import {
 } from './report.mjs';
 
 /**
- * Pad an image with transparent pixels to a target height.
+ * Pad an image with transparent pixels onto a larger transparent canvas.
  *
- * @param {PNG}    img          - The image to pad.
+ * Returns the image unchanged when it already matches the target dimensions,
+ * avoiding a needless full-buffer copy.
+ *
+ * @param {PNG}    img         - The image to pad.
+ * @param {number} targetWidth  - The desired width.
  * @param {number} targetHeight - The desired height.
- * @returns {PNG} The padded image.
+ * @returns {PNG} The padded image (or the original when no padding is needed).
  */
-export function padImage(img, targetHeight) {
-	const padded = new PNG({ width: img.width, height: targetHeight });
+export function padImage(img, targetWidth, targetHeight) {
+	if (img.width === targetWidth && img.height === targetHeight) {
+		return img;
+	}
+
+	const padded = new PNG({ width: targetWidth, height: targetHeight });
 	PNG.bitblt(img, padded, 0, 0, img.width, img.height, 0, 0);
 	return padded;
 }
@@ -54,26 +62,20 @@ export function compareSlug(config, target, viewport) {
 	let img1 = PNG.sync.read(fs.readFileSync(controlImage));
 	let img2 = PNG.sync.read(fs.readFileSync(captureImage));
 
-	if (img1.width !== img2.width) {
-		console.warn(`Width mismatch for ${slug}, skipping.`);
-		return null;
-	}
-
-	// Pad the shorter image so both are the same height.
+	// Pad both onto a common canvas so width changes (a real layout
+	// regression) surface as a large diff instead of dropping the slug from
+	// the report. Height was already handled this way; width is too now.
+	const maxWidth = Math.max(img1.width, img2.width);
 	const maxHeight = Math.max(img1.height, img2.height);
-	if (img1.height < maxHeight) {
-		img1 = padImage(img1, maxHeight);
-	}
-	if (img2.height < maxHeight) {
-		img2 = padImage(img2, maxHeight);
-	}
+	img1 = padImage(img1, maxWidth, maxHeight);
+	img2 = padImage(img2, maxWidth, maxHeight);
 
-	const diff = new PNG({ width: img1.width, height: maxHeight });
+	const diff = new PNG({ width: maxWidth, height: maxHeight });
 	const numDiffPixels = pixelmatch(
 		img1.data,
 		img2.data,
 		diff.data,
-		img1.width,
+		maxWidth,
 		maxHeight,
 		pixelmatchOptions
 	);
@@ -81,7 +83,7 @@ export function compareSlug(config, target, viewport) {
 	const diffImage = path.join(dirs.compares, `${slug}-diff.png`);
 	fs.writeFileSync(diffImage, PNG.sync.write(diff));
 
-	const totalPixels = img1.width * maxHeight;
+	const totalPixels = maxWidth * maxHeight;
 	const diffPercentage = (numDiffPixels / totalPixels) * 100;
 
 	// Compare the captured HTML snapshots when both exist.
