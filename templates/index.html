@@ -63,6 +63,7 @@
 		</thead>
 		<tbody>
 		{rows}
+			<tr id="emptyRow" hidden><td colspan="7" aria-live="polite">No comparisons match your filters.</td></tr>
 		</tbody>
 	</table>
 	</div>
@@ -77,11 +78,13 @@
 		const diff = document.getElementById('filterDiff');
 		const tbody = document.querySelector('#reportsTable tbody');
 
+		const emptyRow = document.getElementById('emptyRow');
+
 		function filterRows() {
 			const q = search.value.toLowerCase();
 			const vp = viewport.value;
 			const d = diff.value;
-			const rows = tbody.querySelectorAll('tr');
+			const rows = tbody.querySelectorAll('tr[data-url]');
 			rows.forEach(function(row) {
 				const url = row.getAttribute('data-url').toLowerCase();
 				const rv = row.getAttribute('data-viewport');
@@ -93,6 +96,9 @@
 				if (d === 'none' && dp > 0) show = false;
 				row.style.display = show ? '' : 'none';
 			});
+			// Show the empty-state row only when every data row is hidden.
+			const anyVisible = Array.from(rows).some(function(r) { return r.style.display !== 'none'; });
+			emptyRow.hidden = anyVisible;
 		}
 
 		search.addEventListener('input', filterRows);
@@ -112,7 +118,7 @@
 					currentSort.col = col;
 					currentSort.asc = true;
 				}
-				const rows = Array.from(tbody.querySelectorAll('tr'));
+				const rows = Array.from(tbody.querySelectorAll('tr[data-url]'));
 				rows.sort(function(a, b) {
 					let va, vb;
 					if (col === 'url') {

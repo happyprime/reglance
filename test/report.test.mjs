@@ -133,6 +133,19 @@ test('generateIndex adds a non-color severity cue to the diff percentage', () =>
 	);
 });
 
+test('generateIndex includes a live empty-state row for filtered results', () => {
+	const config = tempConfig();
+	const html = fs.readFileSync(
+		generateIndex(config, [sampleReport(config)]),
+		'utf8'
+	);
+	assert.match(html, /<tr id="emptyRow" hidden>/);
+	assert.match(
+		html,
+		/aria-live="polite">No comparisons match your filters\./
+	);
+});
+
 test('generateIndex labels the modal close/prev/next buttons', () => {
 	const config = tempConfig();
 	const html = fs.readFileSync(
