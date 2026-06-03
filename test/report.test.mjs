@@ -251,3 +251,21 @@ test('generateIndex labels the modal close/prev/next buttons', () => {
 	assert.match(html, /aria-label="Previous diff"/);
 	assert.match(html, /aria-label="Next diff"/);
 });
+
+test('generateIndex renders the diff modal as a labelled dialog', () => {
+	const config = tempConfig();
+	const html = fs.readFileSync(
+		generateIndex(config, [sampleReport(config)]),
+		'utf8'
+	);
+	assert.match(
+		html,
+		/<div id="diffModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" hidden>/
+	);
+	// The counter is a live region so navigation between diffs is announced.
+	assert.match(html, /id="modalCounter" aria-live="polite"/);
+	// The title uses a real field, not the missing `property` (which rendered
+	// "undefined").
+	assert.doesNotMatch(html, /currentDiff\.property/);
+	assert.match(html, /\$\{currentDiff\.name\}/);
+});
