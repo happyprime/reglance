@@ -90,3 +90,14 @@ test('generateIndex makes sortable headers keyboard-operable with sort state', (
 	// The decorative arrow is hidden from assistive tech.
 	assert.match(html, /class="sort-indicator" aria-hidden="true"/);
 });
+
+test('generateIndex labels the modal close/prev/next buttons', () => {
+	const config = tempConfig();
+	const html = fs.readFileSync(
+		generateIndex(config, [sampleReport(config)]),
+		'utf8'
+	);
+	assert.match(html, /aria-label="Close diff viewer"/);
+	assert.match(html, /aria-label="Previous diff"/);
+	assert.match(html, /aria-label="Next diff"/);
+});
