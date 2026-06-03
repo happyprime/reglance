@@ -58,8 +58,12 @@ function sampleReport(config, over = {}) {
 		reportPath: path.join(config.dirs.reports, 'home-desktop-compare.html'),
 		diffPercentage: 2.5,
 		htmlHasChanges: true,
-		imageWidth: 1920,
-		imageHeight: 4000,
+		controlWidth: 1920,
+		controlHeight: 3800,
+		captureWidth: 1920,
+		captureHeight: 4000,
+		diffWidth: 1920,
+		diffHeight: 4000,
 		...over,
 	};
 }
@@ -89,6 +93,31 @@ test('generateIndex makes sortable headers keyboard-operable with sort state', (
 	assert.match(html, /<button type="button" class="th-sort">/);
 	// The decorative arrow is hidden from assistive tech.
 	assert.match(html, /class="sort-indicator" aria-hidden="true"/);
+});
+
+test('generateReport declares image dimensions and async decoding', () => {
+	const config = tempConfig();
+	const html = fs.readFileSync(
+		generateReport(config, sampleReport(config)),
+		'utf8'
+	);
+	// baseImage = the capture; overlay = the control. Both carry intrinsic
+	// dimensions so the browser reserves the box (no layout shift).
+	assert.match(
+		html,
+		/id="baseImage"[^>]*width="1920"[^>]*height="4000"[^>]*decoding="async"/
+	);
+	assert.match(html, /width="1920"[^>]*height="3800"[^>]*decoding="async"/);
+});
+
+test('generateIndex carries diff image dimensions for the modal', () => {
+	const config = tempConfig();
+	const html = fs.readFileSync(
+		generateIndex(config, [sampleReport(config)]),
+		'utf8'
+	);
+	assert.match(html, /"diffWidth":1920/);
+	assert.match(html, /"diffHeight":4000/);
 });
 
 test('generateIndex adds a non-color severity cue to the diff percentage', () => {

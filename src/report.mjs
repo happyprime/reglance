@@ -112,6 +112,10 @@ export function generateReport(config, report) {
 		.replaceAll('{originalImage}', rel(controlImage))
 		.replaceAll('{secondImage}', rel(captureImage))
 		.replaceAll('{diffImage}', rel(diffImage))
+		.replaceAll('{controlWidth}', String(report.controlWidth ?? ''))
+		.replaceAll('{controlHeight}', String(report.controlHeight ?? ''))
+		.replaceAll('{captureWidth}', String(report.captureWidth ?? ''))
+		.replaceAll('{captureHeight}', String(report.captureHeight ?? ''))
 		.replaceAll('{diffPercentage}', report.diffPercentage.toFixed(2))
 		.replaceAll('{threshold}', String(pixelmatchOptions.threshold))
 		.replaceAll('{includeAA}', pixelmatchOptions.includeAA ? 'Yes' : 'No')
@@ -150,6 +154,8 @@ export function generateIndex(config, reports) {
 		htmlDiffUrl: rel(report.htmlDiffPath),
 		diffPercentage: report.diffPercentage,
 		htmlHasChanges: report.htmlHasChanges,
+		diffWidth: report.diffWidth,
+		diffHeight: report.diffHeight,
 	}));
 
 	const rows = sorted
