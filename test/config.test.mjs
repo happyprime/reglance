@@ -126,6 +126,21 @@ test('filterTargets throws on an unmatched key and lists known keys', () => {
 	);
 });
 
+test('loadConfig rejects a path key with traversal or separators', () => {
+	const configPath = writeConfig({
+		domain: 'site.test',
+		paths: { '../escape': '/' },
+	});
+	assert.throws(() => loadConfig({ configPath }), /Invalid path key/);
+});
+
+test('validateViewports rejects a name with a path separator', () => {
+	assert.throws(
+		() => validateViewports([{ name: '../x', width: 10, height: 10 }]),
+		/Invalid viewport name/
+	);
+});
+
 test('loadConfig throws when the file is missing', () => {
 	assert.throws(
 		() => loadConfig({ configPath: '/nonexistent/reglance.json' }),
