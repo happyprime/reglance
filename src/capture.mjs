@@ -4,6 +4,29 @@ import { chromium } from 'playwright';
 import { filterTargets, DEFAULT_TIMEOUTS } from './config.mjs';
 
 /**
+ * Whether a host is a local development host, for which self-signed/invalid
+ * TLS certificates are expected and certificate errors are ignored by default.
+ *
+ * @param {string|null} host - The hostname (no port).
+ * @returns {boolean} True for localhost/loopback and .test/.local(.localhost) hosts.
+ */
+export function isLocalHost(host) {
+	if (!host) {
+		return false;
+	}
+
+	const name = host.replace(/:\d+$/, '').toLowerCase();
+	return (
+		name === 'localhost' ||
+		name === '127.0.0.1' ||
+		name === '::1' ||
+		name.endsWith('.test') ||
+		name.endsWith('.local') ||
+		name.endsWith('.localhost')
+	);
+}
+
+/**
  * Scroll the full height of the page and back to the top.
  *
  * Triggers lazy-loaded images and other on-scroll behavior so the screenshot
@@ -54,8 +77,9 @@ async function captureTarget(browser, target, viewports, dirs, options) {
 		skipReload = false,
 		retryCount = 2,
 		timeouts = DEFAULT_TIMEOUTS,
+		ignoreHTTPSErrors = false,
 	} = options;
-	const context = await browser.newContext();
+	const context = await browser.newContext({ ignoreHTTPSErrors });
 	const page = await context.newPage();
 	const failures = [];
 	let currentSlug = target.key;
@@ -208,10 +232,21 @@ export async function capture(config, options = {}) {
 	console.log(`Total screenshots: ${totalShots}`);
 	console.log(`Concurrency: ${concurrency} parallel contexts`);
 
-	const browser = await chromium.launch({
-		args: ['--ignore-certificate-errors'],
-		ignoreHTTPSErrors: true,
-	});
+	// Ignore TLS certificate errors only for local development hosts (where
+	// self-signed certs are normal). For a non-local host, validation stays on
+	// unless explicitly opted out with --insecure, and we warn when it does.
+	const host = config.domain ? new URL(config.domain).hostname : null;
+	const ignoreHTTPSErrors = isLocalHost(host) || Boolean(options.insecure);
+	if (options.insecure && host && !isLocalHost(host)) {
+		console.warn(
+			`⚠️  TLS certificate validation is DISABLED for non-local host ${host} (--insecure). ` +
+				'A swapped or expired certificate will be captured without warning.'
+		);
+	}
+
+	const browser = await chromium.launch(
+		ignoreHTTPSErrors ? { args: ['--ignore-certificate-errors'] } : {}
+	);
 
 	const failures = [];
 
@@ -237,7 +272,7 @@ export async function capture(config, options = {}) {
 					target,
 					config.viewports,
 					config.dirs,
-					{ skipReload, timeouts: config.timeouts }
+					{ skipReload, timeouts: config.timeouts, ignoreHTTPSErrors }
 				);
 				failures.push(...targetFailures);
 			}

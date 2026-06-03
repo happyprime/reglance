@@ -27,6 +27,8 @@ Options:
   --concurrency=<n>   Parallel browser contexts for capture (default: 4).
   --stagger=<ms>      Delay between starting capture contexts (default: 500).
   --skip-reload       Reuse the page between viewports during capture.
+  --insecure          Ignore TLS certificate errors for non-local hosts
+                      (already ignored for .test/localhost).
   --fail-on-degraded  Exit non-zero if any capture failed to load cleanly.
   --compare-concurrency=<n>  Parallel diff workers for compare
                       (default: CPU count - 1; lower it for very tall pages).
@@ -47,6 +49,7 @@ const { values, positionals } = parseArgs({
 		concurrency: { type: 'string' },
 		stagger: { type: 'string' },
 		'skip-reload': { type: 'boolean' },
+		insecure: { type: 'boolean' },
 		'fail-on-degraded': { type: 'boolean' },
 		'compare-concurrency': { type: 'string' },
 		'no-open': { type: 'boolean' },
@@ -90,6 +93,7 @@ async function main() {
 					: undefined,
 				skipReload: values['skip-reload'],
 				failOnDegraded: values['fail-on-degraded'],
+				insecure: values.insecure,
 			});
 			break;
 
