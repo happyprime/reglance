@@ -1,0 +1,241 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {
+	normalizeDomain,
+	buildUrl,
+	validateViewports,
+	filterTargets,
+	loadConfig,
+	DEFAULT_PIXELMATCH_OPTIONS,
+} from '../src/config.mjs';
+
+const TARGETS = [
+	{ key: 'home', path: '/' },
+	{ key: 'blog', path: '/blog' },
+];
+
+/**
+ * Write a reglance config to a fresh temp directory and return its path.
+ *
+ * @param {object} config - The config object to serialize.
+ * @returns {string} The path to the written config file.
+ */
+function writeConfig(config) {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reglance-test-'));
+	const configPath = path.join(dir, 'reglance.json');
+	fs.writeFileSync(configPath, JSON.stringify(config));
+	return configPath;
+}
+
+test('normalizeDomain adds https to a bare host', () => {
+	assert.equal(normalizeDomain('site.test'), 'https://site.test');
+});
+
+test('normalizeDomain preserves an explicit scheme', () => {
+	assert.equal(normalizeDomain('http://site.test'), 'http://site.test');
+});
+
+test('normalizeDomain strips trailing slashes', () => {
+	assert.equal(normalizeDomain('https://site.test///'), 'https://site.test');
+});
+
+test('normalizeDomain trims surrounding whitespace', () => {
+	assert.equal(normalizeDomain('  site.test  '), 'https://site.test');
+});
+
+test('normalizeDomain rejects an empty domain', () => {
+	assert.throws(() => normalizeDomain('   '), /Invalid domain/);
+});
+
+test('normalizeDomain rejects a non-string domain', () => {
+	assert.throws(() => normalizeDomain(42), /Invalid domain/);
+});
+
+test('buildUrl joins a domain and a path', () => {
+	assert.equal(
+		buildUrl('https://site.test', '/blog'),
+		'https://site.test/blog'
+	);
+});
+
+test('buildUrl inserts a missing leading slash', () => {
+	assert.equal(
+		buildUrl('https://site.test', 'blog'),
+		'https://site.test/blog'
+	);
+});
+
+test('buildUrl passes an absolute URL through untouched', () => {
+	assert.equal(
+		buildUrl('https://site.test', 'https://other.test/x'),
+		'https://other.test/x'
+	);
+});
+
+test('validateViewports accepts a well-formed array', () => {
+	assert.doesNotThrow(() =>
+		validateViewports([{ name: 'desktop', width: 1920, height: 1080 }])
+	);
+});
+
+test('validateViewports rejects an empty array', () => {
+	assert.throws(() => validateViewports([]), /non-empty array/);
+});
+
+test('validateViewports rejects a missing name', () => {
+	assert.throws(
+		() => validateViewports([{ width: 100, height: 100 }]),
+		/missing a "name"/
+	);
+});
+
+test('validateViewports rejects a non-positive dimension', () => {
+	assert.throws(
+		() => validateViewports([{ name: 'x', width: 0, height: 100 }]),
+		/width must be a positive integer/
+	);
+});
+
+test('validateViewports rejects a non-integer dimension', () => {
+	assert.throws(
+		() => validateViewports([{ name: 'x', width: 100, height: 'tall' }]),
+		/height must be a positive integer/
+	);
+});
+
+test('filterTargets returns all targets when no filter is given', () => {
+	assert.equal(filterTargets(TARGETS), TARGETS);
+	assert.equal(filterTargets(TARGETS, []), TARGETS);
+});
+
+test('filterTargets narrows to the requested keys', () => {
+	const filtered = filterTargets(TARGETS, ['blog']);
+	assert.deepEqual(
+		filtered.map((t) => t.key),
+		['blog']
+	);
+});
+
+test('filterTargets throws on an unmatched key and lists known keys', () => {
+	assert.throws(
+		() => filterTargets(TARGETS, ['blgo']),
+		/No matching paths for: blgo\. Known keys: home, blog\./
+	);
+});
+
+test('loadConfig throws when the file is missing', () => {
+	assert.throws(
+		() => loadConfig({ configPath: '/nonexistent/reglance.json' }),
+		/Config file not found/
+	);
+});
+
+test('loadConfig throws on invalid JSON', () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reglance-test-'));
+	const configPath = path.join(dir, 'reglance.json');
+	fs.writeFileSync(configPath, '{ not json');
+	assert.throws(() => loadConfig({ configPath }), /Could not parse/);
+});
+
+test('loadConfig throws when no paths are configured', () => {
+	const configPath = writeConfig({ domain: 'site.test', paths: {} });
+	assert.throws(() => loadConfig({ configPath }), /No "paths" configured/);
+});
+
+test('loadConfig builds targets from paths and domain', () => {
+	const configPath = writeConfig({
+		domain: 'site.test',
+		paths: { home: '/', blog: '/blog' },
+	});
+	const config = loadConfig({ configPath });
+
+	assert.equal(config.domain, 'https://site.test');
+	assert.deepEqual(
+		config.targets.map((t) => t.url),
+		['https://site.test/', 'https://site.test/blog']
+	);
+});
+
+test('loadConfig leaves domain null when none is configured', () => {
+	const configPath = writeConfig({ paths: { home: '/' } });
+	const config = loadConfig({ configPath });
+	assert.equal(config.domain, null);
+});
+
+test('loadConfig prefers the domain override', () => {
+	const configPath = writeConfig({
+		domain: 'config.test',
+		paths: { home: '/' },
+	});
+	const config = loadConfig({ configPath, domain: 'override.test' });
+	assert.equal(config.domain, 'https://override.test');
+});
+
+test('loadConfig falls back to default viewports', () => {
+	const configPath = writeConfig({
+		domain: 'site.test',
+		paths: { home: '/' },
+	});
+	const config = loadConfig({ configPath });
+	assert.deepEqual(
+		config.viewports.map((v) => v.name),
+		['desktop', 'mobile']
+	);
+});
+
+test('loadConfig validates configured viewports', () => {
+	const configPath = writeConfig({
+		domain: 'site.test',
+		paths: { home: '/' },
+		viewports: [{ name: 'desktop', width: -1, height: 1080 }],
+	});
+	assert.throws(() => loadConfig({ configPath }), /positive integer/);
+});
+
+test('loadConfig merges pixelmatch options over the defaults', () => {
+	const configPath = writeConfig({
+		domain: 'site.test',
+		paths: { home: '/' },
+		pixelmatchOptions: { threshold: 0.5 },
+	});
+	const config = loadConfig({ configPath });
+	assert.equal(config.pixelmatchOptions.threshold, 0.5);
+	assert.equal(
+		config.pixelmatchOptions.includeAA,
+		DEFAULT_PIXELMATCH_OPTIONS.includeAA
+	);
+});
+
+test('loadConfig falls back to default timeouts', () => {
+	const configPath = writeConfig({
+		domain: 'site.test',
+		paths: { home: '/' },
+	});
+	const config = loadConfig({ configPath });
+	assert.equal(config.timeouts.goto, 15000);
+	assert.equal(config.timeouts.settle, 8000);
+});
+
+test('loadConfig merges configured timeouts over the defaults', () => {
+	const configPath = writeConfig({
+		domain: 'site.test',
+		paths: { home: '/' },
+		timeouts: { settle: 20000 },
+	});
+	const config = loadConfig({ configPath });
+	// Overridden value wins; the unspecified one keeps its default.
+	assert.equal(config.timeouts.settle, 20000);
+	assert.equal(config.timeouts.goto, 15000);
+});
+
+test('loadConfig derives a name from the domain host when unset', () => {
+	const configPath = writeConfig({
+		domain: 'https://site.test',
+		paths: { home: '/' },
+	});
+	const config = loadConfig({ configPath });
+	assert.equal(config.name, 'site.test');
+});

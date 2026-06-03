@@ -24,6 +24,12 @@ export const DEFAULT_PIXELMATCH_OPTIONS = {
 const DEFAULT_OUTPUT_DIR = '.reglance';
 
 /**
+ * Default capture timeouts (ms). `goto` bounds initial navigation; `settle`
+ * bounds the post-scroll network-idle wait that lets lazy assets load.
+ */
+export const DEFAULT_TIMEOUTS = { goto: 15000, settle: 8000 };
+
+/**
  * Normalize a domain into an origin with a scheme and no trailing slash.
  *
  * Accepts bare hosts ("site.test"), hosts with a scheme
@@ -34,13 +40,81 @@ const DEFAULT_OUTPUT_DIR = '.reglance';
  * @returns {string} The normalized origin.
  */
 export function normalizeDomain(domain) {
+	if (typeof domain !== 'string' || !domain.trim()) {
+		throw new Error(
+			'❌ Invalid domain: expected a non-empty string.\n' +
+				'💡 Set "domain" in reglance.json or pass --domain=site.test.'
+		);
+	}
+
 	let value = domain.trim();
 
 	if (!/^https?:\/\//i.test(value)) {
 		value = `https://${value}`;
 	}
 
-	return value.replace(/\/+$/, '');
+	value = value.replace(/\/+$/, '');
+
+	// Surface a malformed domain here rather than letting it fail deep in
+	// capture with a cryptic Playwright navigation error.
+	try {
+		new URL(value);
+	} catch {
+		throw new Error(
+			`❌ Invalid domain: "${domain}" is not a valid URL.\n` +
+				'💡 Use a host like "site.test" or a full origin like "https://site.test".'
+		);
+	}
+
+	return value;
+}
+
+/**
+ * Validate the viewports defined in a config, throwing on the first problem.
+ *
+ * A malformed viewport otherwise flows untouched into Playwright's
+ * setViewportSize() and fails mid-capture with an opaque error, so it is
+ * cheaper to catch it up front with an actionable message.
+ *
+ * @param {Array} viewports - The viewport definitions to validate.
+ */
+export function validateViewports(viewports) {
+	if (!Array.isArray(viewports) || viewports.length === 0) {
+		throw new Error(
+			'❌ Invalid "viewports": expected a non-empty array.\n' +
+				'💡 Use entries like { "name": "desktop", "width": 1920, "height": 1080 }.'
+		);
+	}
+
+	viewports.forEach((viewport, index) => {
+		const label = viewport?.name
+			? `"${viewport.name}"`
+			: `at index ${index}`;
+
+		if (!viewport || typeof viewport !== 'object') {
+			throw new Error(
+				`❌ Invalid viewport ${label}: expected an object.\n` +
+					'💡 Use { "name": "desktop", "width": 1920, "height": 1080 }.'
+			);
+		}
+
+		if (typeof viewport.name !== 'string' || !viewport.name.trim()) {
+			throw new Error(
+				`❌ Invalid viewport ${label}: missing a "name".\n` +
+					'💡 Give each viewport a unique name like "desktop" or "mobile".'
+			);
+		}
+
+		for (const dimension of ['width', 'height']) {
+			const value = viewport[dimension];
+			if (!Number.isInteger(value) || value <= 0) {
+				throw new Error(
+					`❌ Invalid viewport "${viewport.name}": ${dimension} must be a positive integer, got ${JSON.stringify(value)}.\n` +
+						'💡 Use numeric pixel values like { "width": 1920, "height": 1080 }.'
+				);
+			}
+		}
+	});
 }
 
 /**
@@ -59,6 +133,34 @@ export function buildUrl(domain, pathname) {
 	}
 
 	return `${domain}${pathname.startsWith('/') ? '' : '/'}${pathname}`;
+}
+
+/**
+ * Narrow the target list to a set of requested path keys.
+ *
+ * Throws when none of the requested keys match, so a typo'd key on
+ * `control`/`compare` surfaces an actionable error instead of silently
+ * doing nothing and printing a success-looking summary.
+ *
+ * @param {Array}    targets - The configured targets.
+ * @param {string[]} [only]  - Path keys to keep. Falsy/empty keeps all.
+ * @returns {Array} The filtered targets.
+ */
+export function filterTargets(targets, only) {
+	if (!only?.length) {
+		return targets;
+	}
+
+	const filtered = targets.filter((target) => only.includes(target.key));
+
+	if (filtered.length === 0) {
+		throw new Error(
+			`No matching paths for: ${only.join(', ')}. ` +
+				`Known keys: ${targets.map((target) => target.key).join(', ')}.`
+		);
+	}
+
+	return filtered;
 }
 
 /**
@@ -97,6 +199,8 @@ export function loadConfig({ configPath = 'reglance.json', domain } = {}) {
 	const origin = resolvedDomain ? normalizeDomain(resolvedDomain) : null;
 
 	const viewports = raw.viewports?.length ? raw.viewports : DEFAULT_VIEWPORTS;
+	validateViewports(viewports);
+
 	const outputDir = path.resolve(raw.output || DEFAULT_OUTPUT_DIR);
 
 	// Build the list of targets to capture and compare.
@@ -115,6 +219,10 @@ export function loadConfig({ configPath = 'reglance.json', domain } = {}) {
 		pixelmatchOptions: {
 			...DEFAULT_PIXELMATCH_OPTIONS,
 			...raw.pixelmatchOptions,
+		},
+		timeouts: {
+			...DEFAULT_TIMEOUTS,
+			...raw.timeouts,
 		},
 		// Directory paths derived from the output directory.
 		dirs: {
@@ -139,6 +247,17 @@ export function loadConfig({ configPath = 'reglance.json', domain } = {}) {
  */
 export function ensureOutputDir(config) {
 	fs.mkdirSync(config.outputDir, { recursive: true });
+
+	// Fail fast with a clear message on a read-only or unwritable output dir,
+	// rather than partway through a run with an opaque fs error.
+	try {
+		fs.accessSync(config.outputDir, fs.constants.W_OK);
+	} catch {
+		throw new Error(
+			`Output directory is not writable: ${config.outputDir}. ` +
+				'Check the permissions on the directory and available disk space.'
+		);
+	}
 
 	const gitignorePath = path.join(config.outputDir, '.gitignore');
 	if (!fs.existsSync(gitignorePath)) {

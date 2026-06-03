@@ -3,6 +3,9 @@ node_modules
 # Reglance output directory.
 .reglance
 
+# Multi-persona code review artifacts.
+.reviews
+
 # Legacy output directories (pre-2.0), kept ignored for leftover local data.
 captures
 compares

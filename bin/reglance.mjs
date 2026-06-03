@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util';
+import { toInt } from '../src/args.mjs';
 import { loadConfig, ensureOutputDir } from '../src/config.mjs';
 import { capture } from '../src/capture.mjs';
 import { control } from '../src/control.mjs';
@@ -26,6 +27,11 @@ Options:
   --concurrency=<n>   Parallel browser contexts for capture (default: 4).
   --stagger=<ms>      Delay between starting capture contexts (default: 500).
   --skip-reload       Reuse the page between viewports during capture.
+  --insecure          Ignore TLS certificate errors for non-local hosts
+                      (already ignored for .test/localhost).
+  --fail-on-degraded  Exit non-zero if any capture failed to load cleanly.
+  --compare-concurrency=<n>  Parallel diff workers for compare
+                      (default: CPU count - 1; lower it for very tall pages).
   --no-open           Don't open the report automatically after compare.
   -h, --help          Show this help.
 
@@ -43,6 +49,9 @@ const { values, positionals } = parseArgs({
 		concurrency: { type: 'string' },
 		stagger: { type: 'string' },
 		'skip-reload': { type: 'boolean' },
+		insecure: { type: 'boolean' },
+		'fail-on-degraded': { type: 'boolean' },
+		'compare-concurrency': { type: 'string' },
 		'no-open': { type: 'boolean' },
 		help: { type: 'boolean', short: 'h' },
 	},
@@ -56,23 +65,7 @@ if (values.help || !command) {
 }
 
 /**
- * Parse an integer flag, exiting with an error when it is not a number.
- *
- * @param {string} value - The raw flag value.
- * @param {string} name  - The flag name, for error messages.
- * @returns {number} The parsed integer.
- */
-function toInt(value, name) {
-	const parsed = parseInt(value, 10);
-	if (Number.isNaN(parsed)) {
-		console.error(`Invalid value for --${name}: ${value}`);
-		process.exit(1);
-	}
-	return parsed;
-}
-
-/**
- *
+ * Dispatch the parsed command.
  */
 async function main() {
 	const config = loadConfig({
@@ -96,9 +89,11 @@ async function main() {
 					? toInt(values.concurrency, 'concurrency')
 					: undefined,
 				staggerDelay: values.stagger
-					? toInt(values.stagger, 'stagger')
+					? toInt(values.stagger, 'stagger', { min: 0 })
 					: undefined,
 				skipReload: values['skip-reload'],
+				failOnDegraded: values['fail-on-degraded'],
+				insecure: values.insecure,
 			});
 			break;
 
@@ -107,7 +102,16 @@ async function main() {
 			break;
 
 		case 'compare':
-			await compare(config, { only, open: !values['no-open'] });
+			await compare(config, {
+				only,
+				open: !values['no-open'],
+				concurrency: values['compare-concurrency']
+					? toInt(
+							values['compare-concurrency'],
+							'compare-concurrency'
+						)
+					: undefined,
+			});
 			break;
 
 		default:
