@@ -91,6 +91,19 @@ test('generateIndex makes sortable headers keyboard-operable with sort state', (
 	assert.match(html, /class="sort-indicator" aria-hidden="true"/);
 });
 
+test('generateIndex adds a non-color severity cue to the diff percentage', () => {
+	const config = tempConfig();
+	// diffPercentage 2.5 → "high" severity class.
+	const html = fs.readFileSync(
+		generateIndex(config, [sampleReport(config, { diffPercentage: 2.5 })]),
+		'utf8'
+	);
+	assert.match(
+		html,
+		/<span class="visually-hidden">high difference: <\/span>2\.50%/
+	);
+});
+
 test('generateIndex labels the modal close/prev/next buttons', () => {
 	const config = tempConfig();
 	const html = fs.readFileSync(

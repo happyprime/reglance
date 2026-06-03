@@ -166,7 +166,7 @@ export function generateIndex(config, reports) {
 			<tr data-url="${report.url}" data-viewport="${report.viewport.name}" data-diff="${report.diffPercentage}" data-index="${index}">
 				<td class="url-cell" title="${report.url}">${report.url}</td>
 				<td>${report.viewport.name} (${report.viewport.width}x${report.viewport.height})</td>
-				<td class="diff-percentage ${diffClass}">${report.diffPercentage.toFixed(2)}%</td>
+				<td class="diff-percentage ${diffClass}"><span class="visually-hidden">${diffClass} difference: </span>${report.diffPercentage.toFixed(2)}%</td>
 				<td class="diff-percentage ${htmlDiffClass}">${report.htmlHasChanges ? 'Yes' : 'No'}</td>
 				<td><a href="${rel(report.reportPath)}">View Report</a></td>
 				<td><a href="#" onclick="openModal(window.diffData, ${index}); return false;">View Diff</a></td>
