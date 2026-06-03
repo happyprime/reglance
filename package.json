@@ -19,6 +19,7 @@
 		"fix": "eslint . --fix",
 		"capture": "node capture.mjs",
 		"compare": "node compare.mjs",
-		"control": "node control.mjs"
+		"control": "node control.mjs",
+		"serve": "node serve.mjs"
 	}
 }

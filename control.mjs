@@ -54,21 +54,6 @@ function findLatestCapture(propertyKey, urlKey, viewport) {
 }
 
 /**
- * Copy a capture to the controls directory
- *
- * @param {string} sourcePath - Path to the source file
- * @param {string} propertyKey - The property key from config
- * @param {string} urlKey - The URL key from config
- * @param {string} viewport - The viewport name
- */
-function copyToControls(sourcePath, propertyKey, urlKey, viewport) {
-	const controlName = `${propertyKey}-${urlKey}-${viewport}.png`;
-	const destPath = path.join(controlsDir, controlName);
-	fs.copyFileSync(sourcePath, destPath);
-	console.log(`Created control: ${controlName}`);
-}
-
-/**
  * Process a single URL for controls
  *
  * @param {string} propertyKey - The property key from config

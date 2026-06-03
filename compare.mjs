@@ -2,13 +2,13 @@ import fs from 'fs';
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
 import path from 'path';
-import crypto from 'crypto';
 import open from 'open';
 import { diffLines } from 'diff';
 
 // Read config file
 const config = JSON.parse(fs.readFileSync('config.json', 'utf8'));
-const reportDomain = config.defaults.report_domain;
+const port = config.defaults.port || 3000;
+const serveOrigin = `http://localhost:${port}`;
 
 // Default pixelmatch options
 const defaultPixelmatchOptions = {
@@ -171,56 +171,20 @@ function generatePropertyIndex(property, reports) {
 	const pixelmatchOptions =
 		config[property]?.pixelmatchOptions || defaultPixelmatchOptions;
 
+	// Compute path from index location to assets
+	const assetsRelPath = path.relative(
+		path.join(reportsDir, property),
+		'assets'
+	);
+
 	let indexContent = `
 <!DOCTYPE html>
 <html>
 <head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>${property} - Visual Regression Reports</title>
-	<style>
-		body { font-family: sans-serif; margin: 2rem; }
-		table { border-collapse: collapse; width: 100%; }
-		th, td { padding: 0.5rem; border: 1px solid #ddd; text-align: left; }
-		th { background: #f5f5f5; }
-		tr:hover { background: #f9f9f9; }
-		a { color: #0066cc; text-decoration: none; }
-		a:hover { text-decoration: underline; }
-		.diff-percentage { font-weight: bold; }
-		.diff-percentage.high { color: #d32f2f; }
-		.diff-percentage.medium { color: #f57c00; }
-		.diff-percentage.low { color: #388e3c; }
-		.settings {
-			background: #f8f9fa;
-			padding: 1rem;
-			border-radius: 4px;
-			margin-bottom: 1.5rem;
-			font-size: 0.9em;
-		}
-		.settings h2 {
-			margin: 0 0 0.5rem 0;
-			font-size: 1.1em;
-			color: #333;
-		}
-		.settings-grid {
-			display: grid;
-			grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-			gap: 1rem;
-		}
-		.setting-item {
-			display: flex;
-			justify-content: space-between;
-			align-items: center;
-			padding: 0.5rem;
-			background: white;
-			border-radius: 4px;
-		}
-		.setting-label {
-			color: #666;
-		}
-		.setting-value {
-			font-weight: bold;
-			color: #333;
-		}
-	</style>
+	<link rel="stylesheet" href="${assetsRelPath}/index-style.css">
 </head>
 <body>
 	<h1>${property} - Visual Regression Reports</h1>
@@ -247,13 +211,31 @@ function generatePropertyIndex(property, reports) {
 		</div>
 	</div>
 
-	<table>
+	<div class="filter-bar">
+		<label>Search: <input type="text" id="filterSearch" placeholder="Filter by URL..."></label>
+		<label>Viewport:
+			<select id="filterViewport">
+				<option value="">All</option>
+				${viewports.map((v) => `<option value="${v.name}">${v.name} (${v.width}x${v.height})</option>`).join('\n\t\t\t\t')}
+			</select>
+		</label>
+		<label>Differences:
+			<select id="filterDiff">
+				<option value="">All</option>
+				<option value="has">Has differences</option>
+				<option value="none">No differences</option>
+			</select>
+		</label>
+	</div>
+
+	<div class="table-wrapper">
+	<table id="reportsTable">
 		<thead>
 			<tr>
-				<th>URL</th>
-				<th>Viewport</th>
-				<th>Visual Difference</th>
-				<th>HTML Changes</th>
+				<th data-sort="url">URL <span class="sort-indicator"></span></th>
+				<th data-sort="viewport">Viewport <span class="sort-indicator"></span></th>
+				<th data-sort="diff">Visual Difference <span class="sort-indicator"></span></th>
+				<th data-sort="html">HTML Changes <span class="sort-indicator"></span></th>
 				<th>Report</th>
 				<th>Visual Diff</th>
 				<th>HTML Diff</th>
@@ -265,6 +247,9 @@ function generatePropertyIndex(property, reports) {
 	// Sort reports by difference percentage (highest first)
 	reports.sort((a, b) => b.diffPercentage - a.diffPercentage);
 
+	// Index lives at reports/<property>/index.html — compute paths relative to that
+	const indexDir = path.join(reportsDir, property);
+
 	// Prepare diff data for JavaScript
 	const diffData = reports.map((report) => ({
 		property: property,
@@ -272,8 +257,8 @@ function generatePropertyIndex(property, reports) {
 			Object.entries(urls).find(([_, url]) => url === report.url)?.[0] ||
 			'unknown',
 		viewport: report.viewport,
-		diffUrl: report.diffUrl,
-		htmlDiffUrl: report.htmlDiffUrl,
+		diffUrl: path.relative(indexDir, report.diffPath),
+		htmlDiffUrl: path.relative(indexDir, report.htmlDiffPath),
 		diffPercentage: report.diffPercentage,
 		htmlHasChanges: report.htmlHasChanges,
 	}));
@@ -290,15 +275,21 @@ function generatePropertyIndex(property, reports) {
 					: 'low';
 		const htmlDiffClass = report.htmlHasChanges ? 'high' : 'low';
 
+		const relativeReportPath = path.relative(indexDir, report.reportPath);
+		const relativeHtmlDiffPath = path.relative(
+			indexDir,
+			report.htmlDiffPath
+		);
+
 		indexContent += `
-			<tr>
-				<td>${report.url}</td>
+			<tr data-url="${report.url}" data-viewport="${report.viewport.name}" data-diff="${report.diffPercentage}" data-index="${index}">
+				<td class="url-cell" title="${report.url}">${report.url}</td>
 				<td>${report.viewport.name} (${report.viewport.width}x${report.viewport.height})</td>
 				<td class="diff-percentage ${diffClass}">${report.diffPercentage.toFixed(2)}%</td>
 				<td class="diff-percentage ${htmlDiffClass}">${report.htmlHasChanges ? 'Yes' : 'No'}</td>
-				<td><a href="${report.reportUrl}">View Report</a></td>
+				<td><a href="${relativeReportPath}">View Report</a></td>
 				<td><a href="#" onclick="openModal(window.diffData, ${index}); return false;">View Diff</a></td>
-				<td><a href="${report.htmlDiffUrl}">View HTML Diff</a></td>
+				<td><a href="${relativeHtmlDiffPath}">View HTML Diff</a></td>
 			</tr>
 		`;
 	}
@@ -306,9 +297,78 @@ function generatePropertyIndex(property, reports) {
 	indexContent += `
 		</tbody>
 	</table>
+	</div>
 	${diffViewerTemplate}
 	<script>
 		window.diffData = ${JSON.stringify(diffData)};
+	</script>
+	<script>
+	(function() {
+		const search = document.getElementById('filterSearch');
+		const viewport = document.getElementById('filterViewport');
+		const diff = document.getElementById('filterDiff');
+		const tbody = document.querySelector('#reportsTable tbody');
+
+		function filterRows() {
+			const q = search.value.toLowerCase();
+			const vp = viewport.value;
+			const d = diff.value;
+			const rows = tbody.querySelectorAll('tr');
+			rows.forEach(function(row) {
+				const url = row.getAttribute('data-url').toLowerCase();
+				const rv = row.getAttribute('data-viewport');
+				const dp = parseFloat(row.getAttribute('data-diff'));
+				let show = true;
+				if (q && url.indexOf(q) === -1) show = false;
+				if (vp && rv !== vp) show = false;
+				if (d === 'has' && dp === 0) show = false;
+				if (d === 'none' && dp > 0) show = false;
+				row.style.display = show ? '' : 'none';
+			});
+		}
+
+		search.addEventListener('input', filterRows);
+		viewport.addEventListener('change', filterRows);
+		diff.addEventListener('change', filterRows);
+
+		// Sorting
+		let currentSort = { col: null, asc: true };
+		document.querySelectorAll('th[data-sort]').forEach(function(th) {
+			th.addEventListener('click', function() {
+				const col = th.getAttribute('data-sort');
+				if (currentSort.col === col) {
+					currentSort.asc = !currentSort.asc;
+				} else {
+					currentSort.col = col;
+					currentSort.asc = true;
+				}
+				const rows = Array.from(tbody.querySelectorAll('tr'));
+				rows.sort(function(a, b) {
+					let va, vb;
+					if (col === 'url') {
+						va = a.getAttribute('data-url');
+						vb = b.getAttribute('data-url');
+					} else if (col === 'viewport') {
+						va = a.getAttribute('data-viewport');
+						vb = b.getAttribute('data-viewport');
+					} else if (col === 'diff') {
+						va = parseFloat(a.getAttribute('data-diff'));
+						vb = parseFloat(b.getAttribute('data-diff'));
+						return currentSort.asc ? va - vb : vb - va;
+					} else if (col === 'html') {
+						va = a.children[3].textContent;
+						vb = b.children[3].textContent;
+					}
+					if (va < vb) return currentSort.asc ? -1 : 1;
+					if (va > vb) return currentSort.asc ? 1 : -1;
+					return 0;
+				});
+				rows.forEach(function(r) { tbody.appendChild(r); });
+				document.querySelectorAll('th .sort-indicator').forEach(function(s) { s.textContent = ''; });
+				th.querySelector('.sort-indicator').textContent = currentSort.asc ? '\\u25B2' : '\\u25BC';
+			});
+		});
+	})();
 	</script>
 </body>
 </html>
@@ -340,7 +400,7 @@ function padImage(img, targetHeight) {
  * @param {object} viewport - The viewport configuration
  * @param {number} diffPercentage - The percentage of pixels that differ
  * @param {object} pixelmatchOptions - The options used for pixelmatch
- * @returns {Promise<{reportPath: string, reportUrl: string, diffUrl: string}>}
+ * @returns {Promise<{reportPath: string, diffPath: string}>}
  */
 async function generateReport(
 	originalPath,
@@ -375,6 +435,13 @@ async function generateReport(
 	// Add diff image path for the toggle functionality
 	template = template.replaceAll('{diffImage}', relativeDiff);
 
+	// Add context placeholders
+	template = template.replaceAll('{property}', property);
+	template = template.replaceAll('{urlKey}', urlKey);
+	template = template.replaceAll('{viewportName}', viewport.name);
+	template = template.replaceAll('{viewportWidth}', viewport.width);
+	template = template.replaceAll('{viewportHeight}', viewport.height);
+
 	// Add diff percentage and options to the template
 	template = template.replaceAll(
 		'{diffPercentage}',
@@ -394,38 +461,7 @@ async function generateReport(
 	// Save the report
 	fs.writeFileSync(reportPath, template);
 
-	// Generate full URLs
-	const reportUrl = `${reportDomain}/${path.relative(process.cwd(), reportPath)}`;
-	const diffUrl = `${reportDomain}/${path.relative(process.cwd(), diffPath)}`;
-
-	return { reportPath, reportUrl, diffUrl };
-}
-
-/**
- * Get the basename of a filepath
- *
- * @param {string} filepath - The filepath to process
- * @returns {string} The basename without extension
- */
-function getBasename(filepath) {
-	return filepath
-		.split('/')
-		.pop()
-		.replace(/\.[^/.]+$/, '');
-}
-
-/**
- * Generate a SHA-256 hash of a string
- *
- * @param {string} str - The string to hash
- * @returns {Promise<string>} The hexadecimal hash
- */
-async function sha256(str) {
-	const encoder = new TextEncoder();
-	const data = encoder.encode(str);
-	const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-	const hashArray = Array.from(new Uint8Array(hashBuffer));
-	return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+	return { reportPath, diffPath };
 }
 
 // Function to compare a single slug
@@ -541,7 +577,7 @@ async function compareSlug(slug) {
 	const htmlDiffPath = path.join(comparesDir, `${slug}-html-diff.html`);
 	fs.writeFileSync(htmlDiffPath, htmlDiffResult.htmlDiffTemplate);
 
-	const reportPath = await generateReport(
+	const report = await generateReport(
 		image1,
 		image2,
 		diffPath,
@@ -552,10 +588,9 @@ async function compareSlug(slug) {
 		pixelmatchOptions
 	);
 	return {
-		reportPath,
-		reportUrl: reportPath.reportUrl,
-		diffUrl: reportPath.diffUrl,
-		htmlDiffUrl: `${reportDomain}/${path.relative(process.cwd(), htmlDiffPath)}`,
+		reportPath: report.reportPath,
+		diffPath: report.diffPath,
+		htmlDiffPath,
 		htmlHasChanges: htmlDiffResult.hasChanges,
 		diffPercentage,
 		numDiffPixels,
@@ -615,7 +650,7 @@ async function compareProperty(property) {
 	const indexPath = path.join(propertyReportsDir, 'index.html');
 	fs.writeFileSync(indexPath, indexContent);
 
-	const reportUrl = `${reportDomain}/${path.relative(process.cwd(), indexPath)}`;
+	const reportUrl = `${serveOrigin}/${path.relative(process.cwd(), indexPath)}`;
 	console.log(`\nProperty comparison complete for ${property}`);
 	console.log(`Index file generated at: ${reportUrl}`);
 
@@ -634,11 +669,12 @@ async function main() {
 		const result = await compareSlug(input);
 		if (result) {
 			console.log(`\nComparison complete for ${input}`);
-			console.log(`Report generated at: ${result.reportUrl}`);
-			console.log(`Diff image saved as: ${result.diffUrl}`);
+			const reportUrl = `${serveOrigin}/${result.reportPath}`;
+			console.log(`Report generated at: ${reportUrl}`);
+			console.log(`Diff image saved as: ${result.diffPath}`);
 
 			// Open the report in the default browser
-			await open(result.reportUrl);
+			await open(reportUrl);
 		}
 	}
 }
