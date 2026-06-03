@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util';
+import { toInt } from '../src/args.mjs';
 import { loadConfig, ensureOutputDir } from '../src/config.mjs';
 import { capture } from '../src/capture.mjs';
 import { control } from '../src/control.mjs';
@@ -56,23 +57,7 @@ if (values.help || !command) {
 }
 
 /**
- * Parse an integer flag, exiting with an error when it is not a number.
- *
- * @param {string} value - The raw flag value.
- * @param {string} name  - The flag name, for error messages.
- * @returns {number} The parsed integer.
- */
-function toInt(value, name) {
-	const parsed = parseInt(value, 10);
-	if (Number.isNaN(parsed)) {
-		console.error(`Invalid value for --${name}: ${value}`);
-		process.exit(1);
-	}
-	return parsed;
-}
-
-/**
- *
+ * Dispatch the parsed command.
  */
 async function main() {
 	const config = loadConfig({
@@ -96,7 +81,7 @@ async function main() {
 					? toInt(values.concurrency, 'concurrency')
 					: undefined,
 				staggerDelay: values.stagger
-					? toInt(values.stagger, 'stagger')
+					? toInt(values.stagger, 'stagger', { min: 0 })
 					: undefined,
 				skipReload: values['skip-reload'],
 			});

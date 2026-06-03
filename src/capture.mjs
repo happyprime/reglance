@@ -205,10 +205,13 @@ export async function capture(config, options = {}) {
 	});
 
 	try {
-		for (let i = 0; i < targets.length; i += concurrency) {
-			const batch = targets.slice(i, i + concurrency);
+		// Clamp to a positive step so a stray non-positive concurrency can
+		// never stall this loop. The CLI already rejects such values.
+		const step = Math.max(1, concurrency);
+		for (let i = 0; i < targets.length; i += step) {
+			const batch = targets.slice(i, i + step);
 			console.log(
-				`Processing batch ${Math.floor(i / concurrency) + 1} of ${Math.ceil(targets.length / concurrency)}`
+				`Processing batch ${Math.floor(i / step) + 1} of ${Math.ceil(targets.length / step)}`
 			);
 
 			await Promise.all(
