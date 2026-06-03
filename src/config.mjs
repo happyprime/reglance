@@ -95,6 +95,30 @@ function assertSafeSlugPart(value, kind) {
 }
 
 /**
+ * Validate a pixelmatch color option is an [r, g, b] triple of 0–255 integers.
+ *
+ * Without this, a non-array value (e.g. `null`) crashes report generation with
+ * a `.join` TypeError at the very end of a compare run, and a crafted array
+ * would be interpolated into the report's CSS.
+ *
+ * @param {*}      color - The configured color value.
+ * @param {string} name  - The option name, for the error message.
+ */
+function validateColor(color, name) {
+	const valid =
+		Array.isArray(color) &&
+		color.length === 3 &&
+		color.every((n) => Number.isInteger(n) && n >= 0 && n <= 255);
+
+	if (!valid) {
+		throw new Error(
+			`❌ Invalid "pixelmatchOptions.${name}": expected [r, g, b] integers 0–255, ` +
+				`got ${JSON.stringify(color)}.`
+		);
+	}
+}
+
+/**
  * Validate the viewports defined in a config, throwing on the first problem.
  *
  * A malformed viewport otherwise flows untouched into Playwright's
@@ -241,16 +265,20 @@ export function loadConfig({ configPath = 'reglance.json', domain } = {}) {
 		url: origin ? buildUrl(origin, pathname) : pathname,
 	}));
 
+	const pixelmatchOptions = {
+		...DEFAULT_PIXELMATCH_OPTIONS,
+		...raw.pixelmatchOptions,
+	};
+	validateColor(pixelmatchOptions.diffColor, 'diffColor');
+	validateColor(pixelmatchOptions.diffColorAlt, 'diffColorAlt');
+
 	return {
 		name: raw.name || (origin ? new URL(origin).host : 'reglance'),
 		domain: origin,
 		outputDir,
 		viewports,
 		targets,
-		pixelmatchOptions: {
-			...DEFAULT_PIXELMATCH_OPTIONS,
-			...raw.pixelmatchOptions,
-		},
+		pixelmatchOptions,
 		timeouts: {
 			...DEFAULT_TIMEOUTS,
 			...raw.timeouts,

@@ -246,6 +246,36 @@ test('loadConfig merges configured timeouts over the defaults', () => {
 	assert.equal(config.timeouts.goto, 15000);
 });
 
+test('loadConfig rejects a non-array diffColor instead of crashing later', () => {
+	const configPath = writeConfig({
+		domain: 'site.test',
+		paths: { home: '/' },
+		pixelmatchOptions: { diffColor: null },
+	});
+	assert.throws(() => loadConfig({ configPath }), /diffColor/);
+});
+
+test('loadConfig rejects an out-of-range diffColor channel', () => {
+	const configPath = writeConfig({
+		domain: 'site.test',
+		paths: { home: '/' },
+		pixelmatchOptions: { diffColor: [256, 0, 0] },
+	});
+	assert.throws(() => loadConfig({ configPath }), /diffColor/);
+});
+
+test('loadConfig accepts a valid diffColor triple', () => {
+	const configPath = writeConfig({
+		domain: 'site.test',
+		paths: { home: '/' },
+		pixelmatchOptions: { diffColor: [10, 20, 30] },
+	});
+	assert.deepEqual(
+		loadConfig({ configPath }).pixelmatchOptions.diffColor,
+		[10, 20, 30]
+	);
+});
+
 test('loadConfig derives a name from the domain host when unset', () => {
 	const configPath = writeConfig({
 		domain: 'https://site.test',
