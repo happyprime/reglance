@@ -27,6 +27,7 @@ Options:
   --concurrency=<n>   Parallel browser contexts for capture (default: 4).
   --stagger=<ms>      Delay between starting capture contexts (default: 500).
   --skip-reload       Reuse the page between viewports during capture.
+  --fail-on-degraded  Exit non-zero if any capture failed to load cleanly.
   --no-open           Don't open the report automatically after compare.
   -h, --help          Show this help.
 
@@ -44,6 +45,7 @@ const { values, positionals } = parseArgs({
 		concurrency: { type: 'string' },
 		stagger: { type: 'string' },
 		'skip-reload': { type: 'boolean' },
+		'fail-on-degraded': { type: 'boolean' },
 		'no-open': { type: 'boolean' },
 		help: { type: 'boolean', short: 'h' },
 	},
@@ -84,6 +86,7 @@ async function main() {
 					? toInt(values.stagger, 'stagger', { min: 0 })
 					: undefined,
 				skipReload: values['skip-reload'],
+				failOnDegraded: values['fail-on-degraded'],
 			});
 			break;
 
