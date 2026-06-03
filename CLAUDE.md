@@ -11,8 +11,9 @@ baseline (controls) with pixelmatch, and generates an interactive HTML report
 highlighting visual and HTML differences. The report is a plain HTML file that
 `compare` opens via `file://` — there is no report server.
 
-It is published from `happyprime/reglance` and installed with
-`npm install happyprime/reglance --save-dev`, which exposes a `reglance` binary.
+It is published to npm as `@happyprime/reglance` and installed with
+`npm install @happyprime/reglance --save-dev`, which exposes a `reglance`
+binary.
 
 ## Architecture
 
