@@ -64,6 +64,19 @@ function sampleReport(config, over = {}) {
 	};
 }
 
+test('generateReport gives the reveal slider ARIA slider semantics', () => {
+	const config = tempConfig();
+	const html = fs.readFileSync(
+		generateReport(config, sampleReport(config)),
+		'utf8'
+	);
+	assert.match(html, /role="slider"/);
+	assert.match(html, /aria-label="Reveal amount/);
+	assert.match(html, /aria-valuemin="0"/);
+	assert.match(html, /aria-valuemax="100"/);
+	assert.match(html, /aria-valuenow="50"/);
+});
+
 test('generateIndex makes sortable headers keyboard-operable with sort state', () => {
 	const config = tempConfig();
 	const html = fs.readFileSync(
