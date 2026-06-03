@@ -126,12 +126,32 @@ td.url-cell {
 }
 
 th[data-sort] {
-	cursor: pointer;
+	padding: 0;
 	user-select: none;
 }
 
-th[data-sort]:hover {
+/* Full-width unstyled button so the whole header cell is the click/focus
+   target while remaining keyboard-operable. */
+.th-sort {
+	display: block;
+	width: 100%;
+	margin: 0;
+	padding: 0.5rem;
+	background: none;
+	border: 0;
+	font: inherit;
+	font-weight: bold;
+	text-align: left;
+	cursor: pointer;
+}
+
+.th-sort:hover {
 	background: #e8e8e8;
+}
+
+.th-sort:focus-visible {
+	outline: 2px solid #0066cc;
+	outline-offset: -2px;
 }
 
 th .sort-indicator {
