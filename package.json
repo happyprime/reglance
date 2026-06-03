@@ -31,6 +31,7 @@
 	"scripts": {
 		"lint": "eslint .",
 		"fix": "eslint . --fix",
+		"test": "node --test",
 		"postinstall": "playwright install chromium"
 	},
 	"dependencies": {

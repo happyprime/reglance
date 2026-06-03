@@ -34,13 +34,81 @@ const DEFAULT_OUTPUT_DIR = '.reglance';
  * @returns {string} The normalized origin.
  */
 export function normalizeDomain(domain) {
+	if (typeof domain !== 'string' || !domain.trim()) {
+		throw new Error(
+			'❌ Invalid domain: expected a non-empty string.\n' +
+				'💡 Set "domain" in reglance.json or pass --domain=site.test.'
+		);
+	}
+
 	let value = domain.trim();
 
 	if (!/^https?:\/\//i.test(value)) {
 		value = `https://${value}`;
 	}
 
-	return value.replace(/\/+$/, '');
+	value = value.replace(/\/+$/, '');
+
+	// Surface a malformed domain here rather than letting it fail deep in
+	// capture with a cryptic Playwright navigation error.
+	try {
+		new URL(value);
+	} catch {
+		throw new Error(
+			`❌ Invalid domain: "${domain}" is not a valid URL.\n` +
+				'💡 Use a host like "site.test" or a full origin like "https://site.test".'
+		);
+	}
+
+	return value;
+}
+
+/**
+ * Validate the viewports defined in a config, throwing on the first problem.
+ *
+ * A malformed viewport otherwise flows untouched into Playwright's
+ * setViewportSize() and fails mid-capture with an opaque error, so it is
+ * cheaper to catch it up front with an actionable message.
+ *
+ * @param {Array} viewports - The viewport definitions to validate.
+ */
+export function validateViewports(viewports) {
+	if (!Array.isArray(viewports) || viewports.length === 0) {
+		throw new Error(
+			'❌ Invalid "viewports": expected a non-empty array.\n' +
+				'💡 Use entries like { "name": "desktop", "width": 1920, "height": 1080 }.'
+		);
+	}
+
+	viewports.forEach((viewport, index) => {
+		const label = viewport?.name
+			? `"${viewport.name}"`
+			: `at index ${index}`;
+
+		if (!viewport || typeof viewport !== 'object') {
+			throw new Error(
+				`❌ Invalid viewport ${label}: expected an object.\n` +
+					'💡 Use { "name": "desktop", "width": 1920, "height": 1080 }.'
+			);
+		}
+
+		if (typeof viewport.name !== 'string' || !viewport.name.trim()) {
+			throw new Error(
+				`❌ Invalid viewport ${label}: missing a "name".\n` +
+					'💡 Give each viewport a unique name like "desktop" or "mobile".'
+			);
+		}
+
+		for (const dimension of ['width', 'height']) {
+			const value = viewport[dimension];
+			if (!Number.isInteger(value) || value <= 0) {
+				throw new Error(
+					`❌ Invalid viewport "${viewport.name}": ${dimension} must be a positive integer, got ${JSON.stringify(value)}.\n` +
+						'💡 Use numeric pixel values like { "width": 1920, "height": 1080 }.'
+				);
+			}
+		}
+	});
 }
 
 /**
@@ -97,6 +165,8 @@ export function loadConfig({ configPath = 'reglance.json', domain } = {}) {
 	const origin = resolvedDomain ? normalizeDomain(resolvedDomain) : null;
 
 	const viewports = raw.viewports?.length ? raw.viewports : DEFAULT_VIEWPORTS;
+	validateViewports(viewports);
+
 	const outputDir = path.resolve(raw.output || DEFAULT_OUTPUT_DIR);
 
 	// Build the list of targets to capture and compare.

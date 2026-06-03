@@ -19,7 +19,7 @@ import {
  * @param {number} targetHeight - The desired height.
  * @returns {PNG} The padded image.
  */
-function padImage(img, targetHeight) {
+export function padImage(img, targetHeight) {
 	const padded = new PNG({ width: img.width, height: targetHeight });
 	PNG.bitblt(img, padded, 0, 0, img.width, img.height, 0, 0);
 	return padded;
@@ -33,7 +33,7 @@ function padImage(img, targetHeight) {
  * @param {object} viewport - The viewport definition.
  * @returns {object|null} The comparison result, or null when it can't run.
  */
-function compareSlug(config, target, viewport) {
+export function compareSlug(config, target, viewport) {
 	const { dirs, pixelmatchOptions } = config;
 	const slug = `${target.key}-${viewport.name}`;
 

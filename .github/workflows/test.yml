@@ -1,0 +1,29 @@
+name: Lint and test
+
+on:
+  push:
+    branches:
+      - trunk
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version:
+          - 20
+          - 22
+    env:
+      # The unit tests run against in-memory PNGs and config files, so the
+      # Chromium download from the postinstall script is not needed here.
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
