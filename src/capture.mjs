@@ -242,37 +242,36 @@ export async function capture(config, options = {}) {
 	const failures = [];
 
 	try {
-		// Clamp to a positive step so a stray non-positive concurrency can
-		// never stall this loop. The CLI already rejects such values.
-		const step = Math.max(1, concurrency);
-		for (let i = 0; i < targets.length; i += step) {
-			const batch = targets.slice(i, i + step);
-			console.log(
-				`Processing batch ${Math.floor(i / step) + 1} of ${Math.ceil(targets.length / step)}`
-			);
+		// A queue-based worker pool: each worker pulls the next target as soon
+		// as it finishes, so one slow target never gates the others (unlike a
+		// fixed batch). The stagger is applied once per worker at startup to
+		// avoid a thundering herd, rather than per-index — so raising the
+		// concurrency doesn't add an ever-growing upfront wait.
+		const queue = [...targets];
+		const poolSize = Math.max(1, Math.min(concurrency, queue.length));
 
-			const batchResults = await Promise.all(
-				batch.map(async (target, j) => {
-					// Stagger context starts to avoid a thundering herd.
-					if (staggerDelay > 0 && j > 0) {
-						await new Promise((resolve) =>
-							setTimeout(resolve, j * staggerDelay)
-						);
-					}
-					return captureTarget(
-						browser,
-						target,
-						config.viewports,
-						config.dirs,
-						{ skipReload }
-					);
-				})
-			);
-
-			for (const targetFailures of batchResults) {
+		const runWorker = async (index) => {
+			if (staggerDelay > 0 && index > 0) {
+				await new Promise((resolve) =>
+					setTimeout(resolve, index * staggerDelay)
+				);
+			}
+			while (queue.length) {
+				const target = queue.shift();
+				const targetFailures = await captureTarget(
+					browser,
+					target,
+					config.viewports,
+					config.dirs,
+					{ skipReload }
+				);
 				failures.push(...targetFailures);
 			}
-		}
+		};
+
+		await Promise.all(
+			Array.from({ length: poolSize }, (_, index) => runWorker(index))
+		);
 	} finally {
 		await browser.close();
 	}
