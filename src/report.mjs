@@ -212,7 +212,7 @@ export function generateIndex(config, reports) {
 				<td class="diff-percentage ${diffClass}"><span class="visually-hidden">${diffClass} difference: </span>${report.diffPercentage.toFixed(2)}%</td>
 				<td class="diff-percentage ${htmlDiffClass}">${report.htmlHasChanges ? 'Yes' : 'No'}</td>
 				<td><a href="${rel(report.reportPath)}">View Report</a></td>
-				<td><a href="#" onclick="openModal(window.diffData, ${index}); return false;">View Diff</a></td>
+				<td><button type="button" class="link-button" onclick="openModal(window.diffData, ${index}, this)">View Diff</button></td>
 				<td><a href="${rel(report.htmlDiffPath)}">View HTML Diff</a></td>
 			</tr>`;
 		})

@@ -34,6 +34,26 @@ a:hover {
 	text-decoration: underline;
 }
 
+/* A button that performs an in-page action (opening the diff dialog) but
+   reads like the surrounding navigation links. */
+.link-button {
+	background: none;
+	border: 0;
+	padding: 0;
+	font: inherit;
+	color: #0066cc;
+	cursor: pointer;
+}
+
+.link-button:hover {
+	text-decoration: underline;
+}
+
+.link-button:focus-visible {
+	outline: 2px solid #0066cc;
+	outline-offset: 2px;
+}
+
 .diff-percentage {
 	font-weight: bold;
 }

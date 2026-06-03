@@ -106,6 +106,20 @@ test('generateIndex escapes config/URL values and hardens the diffData sink', ()
 	assert.ok(html.includes('\\u003c/script>\\u003cscript>alert(1)'));
 });
 
+test('generateIndex renders View Diff as a button passing its trigger', () => {
+	const config = tempConfig();
+	const html = fs.readFileSync(
+		generateIndex(config, [sampleReport(config)]),
+		'utf8'
+	);
+	assert.match(
+		html,
+		/<button type="button" class="link-button" onclick="openModal\(window\.diffData, 0, this\)">View Diff<\/button>/
+	);
+	// The old fake anchor is gone.
+	assert.doesNotMatch(html, /<a href="#" onclick="openModal/);
+});
+
 test('generateIndex makes sortable headers keyboard-operable with sort state', () => {
 	const config = tempConfig();
 	const html = fs.readFileSync(
