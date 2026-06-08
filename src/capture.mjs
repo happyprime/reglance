@@ -92,11 +92,45 @@ async function autoScroll(page) {
 }
 
 /**
+ * Group viewports by their device scale factor, preserving order.
+ *
+ * Playwright's deviceScaleFactor can only be set when a context is created and
+ * cannot be changed on a live context, so each distinct DPR needs its own
+ * context. Viewports usually share a DPR, so grouping is cheaper than a context
+ * per viewport while still letting setViewportSize switch sizes within a group.
+ * A viewport without an explicit deviceScaleFactor defaults to 1.
+ *
+ * @param {Array} viewports - Viewport definitions.
+ * @returns {Array<{ deviceScaleFactor: number, viewports: Array }>} Groups in
+ *   first-seen DPR order.
+ */
+export function groupViewportsByScaleFactor(viewports) {
+	const groups = new Map();
+
+	for (const viewport of viewports) {
+		const deviceScaleFactor = viewport.deviceScaleFactor ?? 1;
+		if (!groups.has(deviceScaleFactor)) {
+			groups.set(deviceScaleFactor, []);
+		}
+		groups.get(deviceScaleFactor).push(viewport);
+	}
+
+	return [...groups.entries()].map(([deviceScaleFactor, grouped]) => ({
+		deviceScaleFactor,
+		viewports: grouped,
+	}));
+}
+
+/**
  * Capture screenshots for a single target across all viewports.
  *
  * Returns the list of slugs that did not capture cleanly so the caller can
  * report them. A degraded capture is still written (best effort) but is
  * recorded as a failure rather than silently treated as success.
+ *
+ * Viewports are captured one context per device scale factor (see
+ * groupViewportsByScaleFactor); within a context the first viewport navigates
+ * fresh and the rest reuse the page (reloading unless --skip-reload).
  *
  * @param {import('playwright').Browser} browser   - The shared browser.
  * @param {object}                       target    - The target ({ key, url }).
@@ -112,107 +146,118 @@ async function captureTarget(browser, target, viewports, dirs, options) {
 		timeouts = DEFAULT_TIMEOUTS,
 		ignoreHTTPSErrors = false,
 	} = options;
-	const context = await browser.newContext({ ignoreHTTPSErrors });
-	const page = await context.newPage();
 	const failures = [];
 	let currentSlug = target.key;
 
-	const failedResources = new Set();
-	page.on('requestfailed', (request) => {
-		const type = request.resourceType();
-		if (type === 'stylesheet' || type === 'script') {
-			failedResources.add(request.url());
-			console.warn(`⚠️  Failed to load ${type}: ${request.url()}`);
-		}
-	});
+	for (const group of groupViewportsByScaleFactor(viewports)) {
+		const context = await browser.newContext({
+			ignoreHTTPSErrors,
+			deviceScaleFactor: group.deviceScaleFactor,
+		});
+		const page = await context.newPage();
 
-	try {
-		for (let i = 0; i < viewports.length; i++) {
-			const viewport = viewports[i];
-			const slug = `${target.key}-${viewport.name}`;
-			currentSlug = slug;
-
-			console.log(`Capturing ${slug}...`);
-
-			await page.setViewportSize({
-				width: viewport.width,
-				height: viewport.height,
-			});
-
-			failedResources.clear();
-
-			let attempts = 0;
-			let success = false;
-
-			while (attempts <= retryCount && !success) {
-				try {
-					if (i === 0 || !skipReload) {
-						if (attempts > 0) {
-							console.log(`  Retry attempt ${attempts}...`);
-							await page.waitForTimeout(1000);
-						}
-
-						const gotoOptions = {
-							waitUntil: 'networkidle',
-							timeout: timeouts.goto,
-						};
-
-						if (i === 0 || attempts > 0) {
-							await page.goto(target.url, gotoOptions);
-						} else {
-							await page.reload(gotoOptions);
-						}
-
-						if (failedResources.size > 0 && attempts < retryCount) {
-							throw new Error(
-								'Critical resources failed to load'
-							);
-						}
-					}
-					success = true;
-				} catch (error) {
-					attempts++;
-					if (attempts > retryCount) {
-						// Retries exhausted. Screenshot best-effort below, but
-						// record the slug as degraded rather than faking success.
-						const reason = error.message || String(error);
-						console.error(
-							`  ⚠️  ${slug} did not load cleanly after ${retryCount + 1} attempts: ${reason}`
-						);
-						failures.push({ slug, url: target.url, reason });
-						success = true;
-					}
-				}
+		const failedResources = new Set();
+		page.on('requestfailed', (request) => {
+			const type = request.resourceType();
+			if (type === 'stylesheet' || type === 'script') {
+				failedResources.add(request.url());
+				console.warn(`⚠️  Failed to load ${type}: ${request.url()}`);
 			}
+		});
 
-			await autoScroll(page);
-			// A single event-driven settle after scrolling, bounded by the
-			// configurable timeout: near-instant on a page that is already
-			// quiet, and long enough for lazy assets on a slow one. (The goto
-			// above already waited for the initial network idle.)
-			await page
-				.waitForLoadState('networkidle', { timeout: timeouts.settle })
-				.catch(() => {
-					// Slow/never-idle page; screenshot what we have.
+		try {
+			for (let i = 0; i < group.viewports.length; i++) {
+				const viewport = group.viewports[i];
+				const slug = `${target.key}-${viewport.name}`;
+				currentSlug = slug;
+
+				console.log(`Capturing ${slug}...`);
+
+				await page.setViewportSize({
+					width: viewport.width,
+					height: viewport.height,
 				});
 
-			const imagePath = path.join(dirs.captures, `${slug}.png`);
-			await page.screenshot({ path: imagePath, fullPage: true });
+				failedResources.clear();
 
-			const htmlPath = path.join(dirs.capturesHtml, `${slug}.html`);
-			fs.writeFileSync(htmlPath, await page.content());
+				let attempts = 0;
+				let success = false;
 
-			console.log(`✓ Captured ${slug}`);
+				while (attempts <= retryCount && !success) {
+					try {
+						if (i === 0 || !skipReload) {
+							if (attempts > 0) {
+								console.log(`  Retry attempt ${attempts}...`);
+								await page.waitForTimeout(1000);
+							}
+
+							const gotoOptions = {
+								waitUntil: 'networkidle',
+								timeout: timeouts.goto,
+							};
+
+							if (i === 0 || attempts > 0) {
+								await page.goto(target.url, gotoOptions);
+							} else {
+								await page.reload(gotoOptions);
+							}
+
+							if (
+								failedResources.size > 0 &&
+								attempts < retryCount
+							) {
+								throw new Error(
+									'Critical resources failed to load'
+								);
+							}
+						}
+						success = true;
+					} catch (error) {
+						attempts++;
+						if (attempts > retryCount) {
+							// Retries exhausted. Screenshot best-effort below, but
+							// record the slug as degraded rather than faking success.
+							const reason = error.message || String(error);
+							console.error(
+								`  ⚠️  ${slug} did not load cleanly after ${retryCount + 1} attempts: ${reason}`
+							);
+							failures.push({ slug, url: target.url, reason });
+							success = true;
+						}
+					}
+				}
+
+				await autoScroll(page);
+				// A single event-driven settle after scrolling, bounded by the
+				// configurable timeout: near-instant on a page that is already
+				// quiet, and long enough for lazy assets on a slow one. (The goto
+				// above already waited for the initial network idle.)
+				await page
+					.waitForLoadState('networkidle', {
+						timeout: timeouts.settle,
+					})
+					.catch(() => {
+						// Slow/never-idle page; screenshot what we have.
+					});
+
+				const imagePath = path.join(dirs.captures, `${slug}.png`);
+				await page.screenshot({ path: imagePath, fullPage: true });
+
+				const htmlPath = path.join(dirs.capturesHtml, `${slug}.html`);
+				fs.writeFileSync(htmlPath, await page.content());
+
+				console.log(`✓ Captured ${slug}`);
+			}
+		} catch (error) {
+			// A failure outside the retry loop (e.g. screenshot or HTML write).
+			const reason = error.message || String(error);
+			console.error(
+				`Error capturing ${currentSlug} (${target.url}): ${reason}`
+			);
+			failures.push({ slug: currentSlug, url: target.url, reason });
+		} finally {
+			await context.close();
 		}
-	} catch (error) {
-		// A failure outside the retry loop (e.g. screenshot or HTML write).
-		const reason = error.message || String(error);
-		console.error(
-			`Error capturing ${currentSlug} (${target.url}): ${reason}`
-		);
-		failures.push({ slug: currentSlug, url: target.url, reason });
-	} finally {
-		await context.close();
 	}
 
 	return failures;

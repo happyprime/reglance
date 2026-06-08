@@ -165,6 +165,22 @@ export function validateViewports(viewports) {
 				);
 			}
 		}
+
+		// Optional. Maps to Playwright's deviceScaleFactor (the page's
+		// devicePixelRatio); fractional ratios like 1.5 are valid, so this is a
+		// positive number rather than an integer. Defaults to 1 when omitted.
+		const { deviceScaleFactor } = viewport;
+		if (
+			deviceScaleFactor !== undefined &&
+			(typeof deviceScaleFactor !== 'number' ||
+				!Number.isFinite(deviceScaleFactor) ||
+				deviceScaleFactor <= 0)
+		) {
+			throw new Error(
+				`❌ Invalid viewport "${viewport.name}": deviceScaleFactor must be a positive number, got ${JSON.stringify(deviceScaleFactor)}.\n` +
+					'💡 Use a device pixel ratio like 1 (default), 2 (retina), or 3.'
+			);
+		}
 	});
 }
 

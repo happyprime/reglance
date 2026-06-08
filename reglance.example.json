@@ -8,7 +8,8 @@
 	},
 	"viewports": [
 		{ "name": "desktop", "width": 1920, "height": 1080 },
-		{ "name": "mobile", "width": 390, "height": 844 }
+		{ "name": "mobile", "width": 390, "height": 844 },
+		{ "name": "mobile-retina", "width": 390, "height": 844, "deviceScaleFactor": 2 }
 	],
 	"pixelmatchOptions": {
 		"threshold": 0.1,

@@ -49,7 +49,7 @@ self-ignored `.reglance/` directory — nothing to add to `.gitignore`.
 | `paths`             | yes      | Map of `key` → path. A value may be a full URL to point at a different domain.     |
 | `domain`            | capture  | Default domain. A bare host (`site.test`) becomes `https://site.test`.             |
 | `name`              | no       | Label shown in the report. Defaults to the domain host.                           |
-| `viewports`         | no       | `[{ name, width, height }]`. Defaults to `desktop` (1920×1080), `mobile` (390×844). |
+| `viewports`         | no       | `[{ name, width, height, deviceScaleFactor? }]`. Defaults to `desktop` (1920×1080), `mobile` (390×844). |
 | `output`            | no       | Output directory. Defaults to `.reglance`.                                         |
 | `pixelmatchOptions` | no       | [pixelmatch](https://github.com/mapbox/pixelmatch) options, e.g. `{ "threshold": 0.1 }`. |
 | `timeouts`          | no       | `{ goto, settle }` in ms. Navigation and post-scroll network-idle waits. Defaults `{ goto: 15000, settle: 8000 }`. Raise `settle` for slow, lazy-loading pages. |
@@ -57,6 +57,15 @@ self-ignored `.reglance/` directory — nothing to add to `.gitignore`.
 `domain` is only needed by `capture`; `control` and `compare` work on the files
 already captured. See [`reglance.example.json`](reglance.example.json) for a full
 example.
+
+A viewport's optional `deviceScaleFactor` (device pixel ratio) renders the page
+as it would appear on a higher-density display — use `2` for a retina capture,
+`3` for some phones. It defaults to `1`. Captures sharing a DPR run in one
+browser context; a new DPR opens a fresh context, so prefer grouping retina and
+non-retina variants rather than scattering them. Note that a `2×` screenshot is
+twice the pixel dimensions of its `1×` counterpart, so changing the
+`deviceScaleFactor` of an existing viewport will diff against its controls as
+fully changed until you re-run `reglance control`.
 
 A `paths` value may be a full URL pointing at a different host than `domain`.
 This is supported, but `capture` prints a warning listing such paths so
