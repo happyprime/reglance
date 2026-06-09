@@ -4,6 +4,7 @@ import {
 	shouldFailRun,
 	isLocalHost,
 	offDomainTargets,
+	groupViewportsByScaleFactor,
 } from '../src/capture.mjs';
 
 const FAILURES = [
@@ -60,4 +61,37 @@ test('offDomainTargets returns nothing when all targets match the domain', () =>
 test('offDomainTargets returns nothing without a configured domain', () => {
 	const targets = [{ key: 'home', url: 'https://site.test/' }];
 	assert.deepEqual(offDomainTargets(targets, null), []);
+});
+
+test('groupViewportsByScaleFactor defaults a missing DPR to 1', () => {
+	const groups = groupViewportsByScaleFactor([
+		{ name: 'desktop', width: 1920, height: 1080 },
+	]);
+	assert.deepEqual(groups, [
+		{
+			deviceScaleFactor: 1,
+			viewports: [{ name: 'desktop', width: 1920, height: 1080 }],
+		},
+	]);
+});
+
+test('groupViewportsByScaleFactor groups viewports that share a DPR', () => {
+	const groups = groupViewportsByScaleFactor([
+		{ name: 'desktop', width: 1920, height: 1080 },
+		{ name: 'desktop-2x', width: 1920, height: 1080, deviceScaleFactor: 2 },
+		{ name: 'mobile', width: 390, height: 844 },
+		{ name: 'mobile-2x', width: 390, height: 844, deviceScaleFactor: 2 },
+	]);
+	// First-seen DPR order: 1 (default) then 2.
+	assert.deepEqual(
+		groups.map((g) => g.deviceScaleFactor),
+		[1, 2]
+	);
+	assert.deepEqual(
+		groups.map((g) => g.viewports.map((v) => v.name)),
+		[
+			['desktop', 'mobile'],
+			['desktop-2x', 'mobile-2x'],
+		]
+	);
 });

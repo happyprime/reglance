@@ -8,6 +8,7 @@ import {
 	generateReport,
 	generateHtmlDiff,
 	escapeHtml,
+	dprLabel,
 } from '../src/report.mjs';
 
 /**
@@ -78,6 +79,64 @@ test('escapeHtml escapes all five HTML metacharacters', () => {
 	// & is escaped first so it doesn't double-escape the entities.
 	assert.equal(escapeHtml('a&b'), 'a&amp;b');
 	assert.equal(escapeHtml('plain'), 'plain');
+});
+
+test('dprLabel annotates only non-default device scale factors', () => {
+	assert.equal(dprLabel({ name: 'desktop' }), '');
+	assert.equal(dprLabel({ name: 'desktop', deviceScaleFactor: 1 }), '');
+	assert.equal(dprLabel({ name: 'retina', deviceScaleFactor: 2 }), ' @2x');
+	assert.equal(dprLabel({ name: 'frac', deviceScaleFactor: 1.5 }), ' @1.5x');
+});
+
+test('generateIndex shows the DPR suffix in the row and viewport filter', () => {
+	const config = tempConfig();
+	config.viewports = [
+		{ name: 'desktop', width: 1920, height: 1080 },
+		{ name: 'retina', width: 1920, height: 1080, deviceScaleFactor: 2 },
+	];
+	const report = sampleReport(config, {
+		viewport: {
+			name: 'retina',
+			width: 1920,
+			height: 1080,
+			deviceScaleFactor: 2,
+		},
+	});
+	const html = fs.readFileSync(generateIndex(config, [report]), 'utf8');
+
+	// The row's viewport cell carries the suffix.
+	assert.match(html, /retina \(1920x1080\) @2x/);
+	// The filter <option> for the retina viewport is annotated, while the
+	// default-DPR desktop option is left clean.
+	assert.match(
+		html,
+		/<option value="retina">retina \(1920x1080\) @2x<\/option>/
+	);
+	assert.match(
+		html,
+		/<option value="desktop">desktop \(1920x1080\)<\/option>/
+	);
+});
+
+test('generateReport shows the DPR suffix in the meta only when non-default', () => {
+	const config = tempConfig();
+	const retina = sampleReport(config, {
+		viewport: {
+			name: 'retina',
+			width: 1920,
+			height: 1080,
+			deviceScaleFactor: 2,
+		},
+	});
+	const retinaHtml = fs.readFileSync(generateReport(config, retina), 'utf8');
+	assert.match(retinaHtml, /retina \(1920&times;1080\) @2x/);
+
+	// A default 1x viewport gets no suffix.
+	const plainHtml = fs.readFileSync(
+		generateReport(config, sampleReport(config)),
+		'utf8'
+	);
+	assert.match(plainHtml, /desktop \(1920&times;1080\)<\/span>/);
 });
 
 test('generateIndex picks the severity class at the threshold boundaries', () => {

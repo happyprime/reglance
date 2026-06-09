@@ -106,6 +106,35 @@ test('validateViewports rejects a non-integer dimension', () => {
 	);
 });
 
+test('validateViewports accepts an optional deviceScaleFactor', () => {
+	assert.doesNotThrow(() =>
+		validateViewports([
+			{ name: 'retina', width: 1920, height: 1080, deviceScaleFactor: 2 },
+			{ name: 'frac', width: 800, height: 600, deviceScaleFactor: 1.5 },
+		])
+	);
+});
+
+test('validateViewports rejects a non-positive deviceScaleFactor', () => {
+	assert.throws(
+		() =>
+			validateViewports([
+				{ name: 'x', width: 100, height: 100, deviceScaleFactor: 0 },
+			]),
+		/deviceScaleFactor must be a positive number/
+	);
+});
+
+test('validateViewports rejects a non-numeric deviceScaleFactor', () => {
+	assert.throws(
+		() =>
+			validateViewports([
+				{ name: 'x', width: 100, height: 100, deviceScaleFactor: '2' },
+			]),
+		/deviceScaleFactor must be a positive number/
+	);
+});
+
 test('filterTargets returns all targets when no filter is given', () => {
 	assert.equal(filterTargets(TARGETS), TARGETS);
 	assert.equal(filterTargets(TARGETS, []), TARGETS);

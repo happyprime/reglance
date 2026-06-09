@@ -53,6 +53,21 @@ export function escapeHtml(str) {
 }
 
 /**
+ * A device-pixel-ratio suffix for a viewport, e.g. ` @2x`.
+ *
+ * Returns an empty string at the default ratio of 1 so standard captures read
+ * cleanly and only retina / high-density viewports are annotated. The value is
+ * a validated positive number (see validateViewports), so it needs no escaping.
+ *
+ * @param {object} viewport - The viewport definition.
+ * @returns {string} The suffix (with a leading space) or an empty string.
+ */
+export function dprLabel(viewport) {
+	const dpr = viewport?.deviceScaleFactor ?? 1;
+	return dpr === 1 ? '' : ` @${dpr}x`;
+}
+
+/**
  * Serialize a value for embedding in an inline <script>.
  *
  * JSON.stringify does not neutralize `</script>` or the U+2028/U+2029 line
@@ -108,6 +123,7 @@ export function generateHtmlDiff(html1, html2, context, diffLines) {
 		.replaceAll('{viewportName}', escapeHtml(viewport.name))
 		.replaceAll('{viewportWidth}', String(viewport.width))
 		.replaceAll('{viewportHeight}', String(viewport.height))
+		.replaceAll('{viewportDpr}', dprLabel(viewport))
 		.replaceAll('{status}', hasChanges ? 'Changes detected' : 'No changes')
 		.replaceAll('{diffContent}', diffContent);
 
@@ -144,6 +160,7 @@ export function generateReport(config, report) {
 		.replaceAll('{viewportName}', escapeHtml(viewport.name))
 		.replaceAll('{viewportWidth}', String(viewport.width))
 		.replaceAll('{viewportHeight}', String(viewport.height))
+		.replaceAll('{viewportDpr}', dprLabel(viewport))
 		.replaceAll('{originalImage}', rel(controlImage))
 		.replaceAll('{secondImage}', rel(captureImage))
 		.replaceAll('{diffImage}', rel(diffImage))
@@ -208,7 +225,7 @@ export function generateIndex(config, reports) {
 			return `
 			<tr data-url="${url}" data-viewport="${viewportName}" data-diff="${report.diffPercentage}" data-index="${index}">
 				<td class="url-cell" title="${url}">${url}</td>
-				<td>${viewportName} (${report.viewport.width}x${report.viewport.height})</td>
+				<td>${viewportName} (${report.viewport.width}x${report.viewport.height})${dprLabel(report.viewport)}</td>
 				<td class="diff-percentage ${diffClass}"><span class="visually-hidden">${diffClass} difference: </span>${report.diffPercentage.toFixed(2)}%</td>
 				<td class="diff-percentage ${htmlDiffClass}">${report.htmlHasChanges ? 'Yes' : 'No'}</td>
 				<td><a href="${rel(report.reportPath)}">View Report</a></td>
@@ -221,7 +238,7 @@ export function generateIndex(config, reports) {
 	const viewportOptions = viewports
 		.map((v) => {
 			const vn = escapeHtml(v.name);
-			return `<option value="${vn}">${vn} (${v.width}x${v.height})</option>`;
+			return `<option value="${vn}">${vn} (${v.width}x${v.height})${dprLabel(v)}</option>`;
 		})
 		.join('\n\t\t\t\t');
 
