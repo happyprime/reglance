@@ -75,7 +75,7 @@ test('isBlockedHost matches a listed host exactly', () => {
 
 test('isBlockedHost matches subdomains of a listed host', () => {
 	assert.equal(
-		isBlockedHost('https://pinchofyum.kit.com/f83b/index.js', ['kit.com']),
+		isBlockedHost('https://sub.example.org/f83b/index.js', ['example.org']),
 		true
 	);
 });
