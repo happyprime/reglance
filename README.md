@@ -52,7 +52,7 @@ self-ignored `.reglance/` directory — nothing to add to `.gitignore`.
 | `viewports`         | no       | `[{ name, width, height, deviceScaleFactor? }]`. Defaults to `desktop` (1920×1080), `mobile` (390×844). |
 | `output`            | no       | Output directory. Defaults to `.reglance`.                                         |
 | `pixelmatchOptions` | no       | [pixelmatch](https://github.com/mapbox/pixelmatch) options, e.g. `{ "threshold": 0.1 }`. |
-| `timeouts`          | no       | `{ goto, settle }` in ms. Navigation and post-scroll network-idle waits. Defaults `{ goto: 15000, settle: 8000 }`. Raise `settle` for slow, lazy-loading pages. |
+| `timeouts`          | no       | `{ goto, settle }` in ms. `goto` bounds navigation; `settle` bounds each post-scroll wait (network idle, then image load/decode). Defaults `{ goto: 15000, settle: 8000 }`. Raise `settle` for slow, lazy-loading pages. |
 | `blockHosts`        | no       | Hostnames to block requests to during capture, e.g. `["challenges.cloudflare.com"]`. Each entry also blocks its subdomains. |
 
 `domain` is only needed by `capture`; `control` and `compare` work on the files
@@ -65,8 +65,8 @@ network busy and stall capture — CAPTCHA widgets like Cloudflare Turnstile,
 ad tech, analytics — or that render differently on every load and pollute
 diffs. Captures wait for the network to go idle, so a widget that polls or
 retries indefinitely will otherwise time out every viewport on pages that
-embed it. Entries are bare hostnames; `"kit.com"` blocks `kit.com` and
-`pinchofyum.kit.com` alike.
+embed it. Entries are bare hostnames; `"example.org"` blocks `example.org` and
+`sub.example.org` alike.
 
 A viewport's optional `deviceScaleFactor` (device pixel ratio) renders the page
 as it would appear on a higher-density display — use `2` for a retina capture,
@@ -124,6 +124,11 @@ guards against silently baselining bad data:
 - If a page never loads cleanly (after retries), `capture` reports it as
   degraded instead of treating it as a success. Add `--fail-on-degraded` to
   make the run exit non-zero in CI.
+- `capture` scrolls each page one viewport at a time so every lazy-loaded
+  image is triggered, then waits (bounded by `timeouts.settle`) for all
+  images to load and decode before screenshotting — and warns per capture
+  when any image was still loading, instead of silently shipping a partial
+  screenshot.
 - `control` records each promotion in `.reglance/controls/manifest.json` and
   warns when it promoted fewer captures than expected (so the untouched
   controls are now stale). `compare` warns when the baseline mixes controls

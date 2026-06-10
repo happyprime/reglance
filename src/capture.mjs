@@ -63,7 +63,7 @@ export function offDomainTargets(targets, domain) {
  * Whether a URL's host is covered by the configured block list.
  *
  * An entry matches the host itself and all of its subdomains, so
- * "kit.com" blocks both "kit.com" and "pinchofyum.kit.com". Non-network
+ * "example.org" blocks both "example.org" and "sub.example.org". Non-network
  * URLs (blob:, data:, chrome-extension:) have no hostname and never match.
  *
  * @param {string}   url        - The request URL.
@@ -95,32 +95,71 @@ export function isBlockedHost(url, blockHosts) {
  * Scroll the full height of the page and back to the top.
  *
  * Triggers lazy-loaded images and other on-scroll behavior so the screenshot
- * captures the page as a visitor would see it. Scrolls to the bottom and waits
- * for the page to grow, repeating until the height stabilizes — so a short page
- * settles almost instantly while a tall one keeps going as content loads,
- * rather than paying a fixed per-step delay across the whole height.
+ * captures the page as a visitor would see it. Steps one viewport at a time
+ * because lazy loaders (IntersectionObserver, native loading="lazy") only
+ * trigger for content near the viewport — jumping straight to the bottom
+ * skips everything in between, and which of those images load becomes a
+ * timing race. The height is re-read every step so content that loads and
+ * grows the page extends the walk.
  *
  * @param {import('playwright').Page} page - The page to scroll.
  */
 async function autoScroll(page) {
 	await page.evaluate(async () => {
 		const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-		let lastHeight = -1;
+		const root = document.scrollingElement || document.documentElement;
+		let position = 0;
 
-		// Cap iterations so a page that grows on every scroll (infinite feed)
-		// can't loop forever.
-		for (let i = 0; i < 100; i++) {
-			const height = document.body.scrollHeight;
-			if (height === lastHeight) {
+		// Cap iterations so a page can't loop forever. (e.g. infinite scroll)
+		for (let i = 0; i < 500; i++) {
+			position += window.innerHeight;
+			// 'instant' overrides a site's `scroll-behavior: smooth`, which
+			// would otherwise animate each step and outpace this loop.
+			window.scrollTo({ top: position, behavior: 'instant' });
+			await sleep(50);
+
+			if (position >= root.scrollHeight - window.innerHeight) {
 				break;
 			}
-			lastHeight = height;
-			window.scrollTo(0, height);
-			await sleep(50);
 		}
 
-		window.scrollTo(0, 0);
+		window.scrollTo({ top: 0, behavior: 'instant' });
 	});
+}
+
+/**
+ * Wait for every image on the page to finish loading and be ready to paint.
+ *
+ * The network-idle settle alone is not enough: it only covers requests that
+ * have already started, says nothing about decode state, and when it times
+ * out on a busy server the capture proceeds silently with whatever images
+ * happened to arrive. decode() resolves once an image is loaded and decoded;
+ * a broken image rejects, which counts as settled — a missing image is the
+ * page's actual state, not something to keep waiting on.
+ *
+ * @param {import('playwright').Page} page    - The page to wait on.
+ * @param {number}                    timeout - Max wait in ms.
+ * @returns {Promise<number>} How many images were still loading at timeout.
+ */
+async function waitForImages(page, timeout) {
+	return page.evaluate(async (maxWait) => {
+		const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+		// Hidden images are excluded: they cannot paint into the screenshot,
+		// and a hidden native-lazy image (e.g. a desktop-only image at a
+		// mobile viewport width) never loads at all by design — waiting for
+		// it would burn the full timeout and warn about nothing.
+		const images = Array.from(document.images).filter((img) =>
+			img.checkVisibility ? img.checkVisibility() : true
+		);
+
+		await Promise.race([
+			Promise.all(images.map((img) => img.decode().catch(() => {}))),
+			sleep(maxWait),
+		]);
+
+		return images.filter((img) => !img.complete).length;
+	}, timeout);
 }
 
 /**
@@ -164,11 +203,11 @@ export function groupViewportsByScaleFactor(viewports) {
  * groupViewportsByScaleFactor); within a context the first viewport navigates
  * fresh and the rest reuse the page (reloading unless --skip-reload).
  *
- * @param {import('playwright').Browser} browser   - The shared browser.
- * @param {object}                       target    - The target ({ key, url }).
- * @param {Array}                        viewports - Viewport definitions.
- * @param {object}                       dirs      - Output directory paths.
- * @param {object}                       options   - Capture options.
+ * @param {import('playwright').Browser} browser   The shared browser.
+ * @param {object}                       target    The target ({ key, url }).
+ * @param {Array}                        viewports Viewport definitions.
+ * @param {object}                       dirs      Output directory paths.
+ * @param {object}                       options   Capture options.
  * @returns {Promise<Array<{ slug: string, url: string, reason: string }>>} Failed slugs.
  */
 async function captureTarget(browser, target, viewports, dirs, options) {
@@ -201,9 +240,7 @@ async function captureTarget(browser, target, viewports, dirs, options) {
 
 		const failedResources = new Set();
 		page.on('requestfailed', (request) => {
-			// A deliberately blocked host is not a load failure — without this
-			// guard, blocking a third-party script would trigger the
-			// critical-resource retry on every attempt.
+			// A deliberately blocked host is not a load failure.
 			if (isBlockedHost(request.url(), blockHosts)) {
 				return;
 			}
@@ -289,6 +326,17 @@ async function captureTarget(browser, target, viewports, dirs, options) {
 						// Slow/never-idle page; screenshot what we have.
 					});
 
+				const pendingImages = await waitForImages(
+					page,
+					timeouts.settle
+				);
+				if (pendingImages > 0) {
+					console.warn(
+						`  ⚠️  ${slug}: ${pendingImages} image(s) were still loading at capture ` +
+							'— the screenshot may be missing them. Raise "timeouts.settle" if this persists.'
+					);
+				}
+
 				const imagePath = path.join(dirs.captures, `${slug}.png`);
 				await page.screenshot({ path: imagePath, fullPage: true });
 
@@ -319,8 +367,8 @@ async function captureTarget(browser, target, viewports, dirs, options) {
  * opt-in (so existing best-effort/partial workflows keep working) — see the
  * D-004 decision.
  *
- * @param {Array}   failures        - The degraded-slug records.
- * @param {boolean} [failOnDegraded] - Whether degraded captures fail the run.
+ * @param {Array}   failures         The degraded-slug records.
+ * @param {boolean} [failOnDegraded] Whether degraded captures fail the run.
  * @returns {boolean} True when the run should signal failure.
  */
 export function shouldFailRun(failures, failOnDegraded = false) {
@@ -330,13 +378,13 @@ export function shouldFailRun(failures, failOnDegraded = false) {
 /**
  * Capture screenshots for every configured target.
  *
- * @param {object} config              - The normalized config.
- * @param {object} [options]           - Capture options.
- * @param {number} [options.concurrency] - Parallel browser contexts.
- * @param {number} [options.staggerDelay] - Delay (ms) between context starts.
- * @param {boolean}[options.skipReload]   - Reuse the page between viewports.
- * @param {boolean}[options.failOnDegraded] - Exit non-zero if any capture is degraded.
- * @param {Array}  [options.only]         - Limit to these target keys.
+ * @param {object} config                   The normalized config.
+ * @param {object} [options]                Capture options.
+ * @param {number} [options.concurrency]    Parallel browser contexts.
+ * @param {number} [options.staggerDelay]   Delay (ms) between context starts.
+ * @param {boolean}[options.skipReload]     Reuse the page between viewports.
+ * @param {boolean}[options.failOnDegraded] Exit non-zero if any capture is degraded.
+ * @param {Array}  [options.only]           Limit to these target keys.
  * @returns {Promise<{ failures: Array }>} The degraded-slug records.
  */
 export async function capture(config, options = {}) {
