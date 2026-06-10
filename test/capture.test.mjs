@@ -5,6 +5,7 @@ import {
 	isLocalHost,
 	offDomainTargets,
 	groupViewportsByScaleFactor,
+	isBlockedHost,
 } from '../src/capture.mjs';
 
 const FAILURES = [
@@ -61,6 +62,60 @@ test('offDomainTargets returns nothing when all targets match the domain', () =>
 test('offDomainTargets returns nothing without a configured domain', () => {
 	const targets = [{ key: 'home', url: 'https://site.test/' }];
 	assert.deepEqual(offDomainTargets(targets, null), []);
+});
+
+test('isBlockedHost matches a listed host exactly', () => {
+	assert.equal(
+		isBlockedHost('https://challenges.cloudflare.com/turnstile/v0/api.js', [
+			'challenges.cloudflare.com',
+		]),
+		true
+	);
+});
+
+test('isBlockedHost matches subdomains of a listed host', () => {
+	assert.equal(
+		isBlockedHost('https://pinchofyum.kit.com/f83b/index.js', ['kit.com']),
+		true
+	);
+});
+
+test('isBlockedHost does not match a host that merely ends with an entry', () => {
+	// "cloudflare.com" must not block "notcloudflare.com".
+	assert.equal(
+		isBlockedHost('https://notcloudflare.com/x.js', ['cloudflare.com']),
+		false
+	);
+});
+
+test('isBlockedHost ignores case in the request host', () => {
+	assert.equal(
+		isBlockedHost('https://Challenges.Cloudflare.com/x', [
+			'challenges.cloudflare.com',
+		]),
+		true
+	);
+});
+
+test('isBlockedHost leaves unlisted hosts alone', () => {
+	assert.equal(
+		isBlockedHost('https://site.test/style.css', [
+			'challenges.cloudflare.com',
+		]),
+		false
+	);
+});
+
+test('isBlockedHost never matches URLs without a hostname', () => {
+	const blocked = ['challenges.cloudflare.com'];
+	assert.equal(isBlockedHost('blob:https://x.test/abc-123', blocked), false);
+	assert.equal(isBlockedHost('data:text/plain,hi', blocked), false);
+	assert.equal(isBlockedHost('not a url', blocked), false);
+});
+
+test('isBlockedHost is false for an empty or missing block list', () => {
+	assert.equal(isBlockedHost('https://x.test/', []), false);
+	assert.equal(isBlockedHost('https://x.test/', undefined), false);
 });
 
 test('groupViewportsByScaleFactor defaults a missing DPR to 1', () => {

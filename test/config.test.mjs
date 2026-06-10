@@ -9,6 +9,7 @@ import {
 	validateViewports,
 	filterTargets,
 	loadConfig,
+	normalizeBlockHosts,
 	DEFAULT_PIXELMATCH_OPTIONS,
 } from '../src/config.mjs';
 
@@ -273,6 +274,58 @@ test('loadConfig merges configured timeouts over the defaults', () => {
 	// Overridden value wins; the unspecified one keeps its default.
 	assert.equal(config.timeouts.settle, 20000);
 	assert.equal(config.timeouts.goto, 15000);
+});
+
+test('normalizeBlockHosts defaults a missing value to an empty list', () => {
+	assert.deepEqual(normalizeBlockHosts(undefined), []);
+});
+
+test('normalizeBlockHosts lowercases entries and strips a *. prefix', () => {
+	assert.deepEqual(
+		normalizeBlockHosts(['Challenges.Cloudflare.com', '*.kit.com']),
+		['challenges.cloudflare.com', 'kit.com']
+	);
+});
+
+test('normalizeBlockHosts rejects a non-array value', () => {
+	assert.throws(
+		() => normalizeBlockHosts('challenges.cloudflare.com'),
+		/Invalid "blockHosts"/
+	);
+});
+
+test('normalizeBlockHosts rejects empty and non-string entries', () => {
+	assert.throws(() => normalizeBlockHosts(['']), /non-empty string/);
+	assert.throws(() => normalizeBlockHosts([42]), /non-empty string/);
+});
+
+test('normalizeBlockHosts rejects entries with a scheme, port, or path', () => {
+	assert.throws(
+		() => normalizeBlockHosts(['https://challenges.cloudflare.com']),
+		/bare hostname/
+	);
+	assert.throws(() => normalizeBlockHosts(['kit.com/path']), /bare hostname/);
+	assert.throws(() => normalizeBlockHosts(['kit.com:8080']), /bare hostname/);
+});
+
+test('loadConfig defaults blockHosts to an empty list', () => {
+	const configPath = writeConfig({
+		domain: 'site.test',
+		paths: { home: '/' },
+	});
+	assert.deepEqual(loadConfig({ configPath }).blockHosts, []);
+});
+
+test('loadConfig normalizes configured blockHosts', () => {
+	const configPath = writeConfig({
+		domain: 'site.test',
+		paths: { home: '/' },
+		blockHosts: ['*.Kit.com', 'challenges.cloudflare.com'],
+	});
+	assert.deepEqual(loadConfig({ configPath }).blockHosts, [
+		'kit.com',
+		'challenges.cloudflare.com',
+	]);
 });
 
 test('loadConfig rejects a non-array diffColor instead of crashing later', () => {

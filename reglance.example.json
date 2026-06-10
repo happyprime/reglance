@@ -20,5 +20,6 @@
 	"timeouts": {
 		"goto": 15000,
 		"settle": 8000
-	}
+	},
+	"blockHosts": ["challenges.cloudflare.com"]
 }
