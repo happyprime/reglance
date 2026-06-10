@@ -60,6 +60,38 @@ export function offDomainTargets(targets, domain) {
 }
 
 /**
+ * Whether a URL's host is covered by the configured block list.
+ *
+ * An entry matches the host itself and all of its subdomains, so
+ * "kit.com" blocks both "kit.com" and "pinchofyum.kit.com". Non-network
+ * URLs (blob:, data:, chrome-extension:) have no hostname and never match.
+ *
+ * @param {string}   url        - The request URL.
+ * @param {string[]} blockHosts - Normalized (lowercase) hostnames.
+ * @returns {boolean} True when the request should be blocked.
+ */
+export function isBlockedHost(url, blockHosts) {
+	if (!blockHosts?.length) {
+		return false;
+	}
+
+	let host;
+	try {
+		host = new URL(url).hostname.toLowerCase();
+	} catch {
+		return false;
+	}
+
+	if (!host) {
+		return false;
+	}
+
+	return blockHosts.some(
+		(entry) => host === entry || host.endsWith(`.${entry}`)
+	);
+}
+
+/**
  * Scroll the full height of the page and back to the top.
  *
  * Triggers lazy-loaded images and other on-scroll behavior so the screenshot
@@ -145,6 +177,7 @@ async function captureTarget(browser, target, viewports, dirs, options) {
 		retryCount = 2,
 		timeouts = DEFAULT_TIMEOUTS,
 		ignoreHTTPSErrors = false,
+		blockHosts = [],
 	} = options;
 	const failures = [];
 	let currentSlug = target.key;
@@ -154,10 +187,26 @@ async function captureTarget(browser, target, viewports, dirs, options) {
 			ignoreHTTPSErrors,
 			deviceScaleFactor: group.deviceScaleFactor,
 		});
+
+		if (blockHosts.length) {
+			await context.route('**/*', (route) => {
+				if (isBlockedHost(route.request().url(), blockHosts)) {
+					return route.abort('blockedbyclient');
+				}
+				return route.continue();
+			});
+		}
+
 		const page = await context.newPage();
 
 		const failedResources = new Set();
 		page.on('requestfailed', (request) => {
+			// A deliberately blocked host is not a load failure — without this
+			// guard, blocking a third-party script would trigger the
+			// critical-resource retry on every attempt.
+			if (isBlockedHost(request.url(), blockHosts)) {
+				return;
+			}
 			const type = request.resourceType();
 			if (type === 'stylesheet' || type === 'script') {
 				failedResources.add(request.url());
@@ -317,6 +366,11 @@ export async function capture(config, options = {}) {
 	console.log(`Viewports per target: ${config.viewports.length}`);
 	console.log(`Total screenshots: ${totalShots}`);
 	console.log(`Concurrency: ${concurrency} parallel contexts`);
+	if (config.blockHosts?.length) {
+		console.log(
+			`Blocking hosts (and subdomains): ${config.blockHosts.join(', ')}`
+		);
+	}
 
 	// Ignore TLS certificate errors only for local development hosts (where
 	// self-signed certs are normal). For a non-local host, validation stays on
@@ -370,7 +424,12 @@ export async function capture(config, options = {}) {
 					target,
 					config.viewports,
 					config.dirs,
-					{ skipReload, timeouts: config.timeouts, ignoreHTTPSErrors }
+					{
+						skipReload,
+						timeouts: config.timeouts,
+						ignoreHTTPSErrors,
+						blockHosts: config.blockHosts ?? [],
+					}
 				);
 				failures.push(...targetFailures);
 			}

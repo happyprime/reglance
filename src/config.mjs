@@ -185,6 +185,50 @@ export function validateViewports(viewports) {
 }
 
 /**
+ * Normalize and validate the `blockHosts` config value.
+ *
+ * Entries are bare hostnames; each blocks the host itself and all of its
+ * subdomains during capture (a leading `*.` is accepted and equivalent).
+ * Anything with a scheme, path, or port is rejected up front — silently
+ * matching nothing would read as "the block isn't working".
+ *
+ * @param {*} blockHosts - The raw config value.
+ * @returns {string[]} Lowercased hostnames with any `*.` prefix removed.
+ */
+export function normalizeBlockHosts(blockHosts) {
+	if (blockHosts === undefined) {
+		return [];
+	}
+
+	if (!Array.isArray(blockHosts)) {
+		throw new Error(
+			'❌ Invalid "blockHosts": expected an array of hostnames.\n' +
+				'💡 Use entries like ["challenges.cloudflare.com"].'
+		);
+	}
+
+	return blockHosts.map((entry) => {
+		if (typeof entry !== 'string' || !entry.trim()) {
+			throw new Error(
+				`❌ Invalid "blockHosts" entry ${JSON.stringify(entry)}: expected a non-empty string.\n` +
+					'💡 Use a bare hostname like "challenges.cloudflare.com".'
+			);
+		}
+
+		const host = entry.trim().toLowerCase().replace(/^\*\./, '');
+
+		if (/[/:\s]/.test(host)) {
+			throw new Error(
+				`❌ Invalid "blockHosts" entry ${JSON.stringify(entry)}: expected a bare hostname (no scheme, port, or path).\n` +
+					'💡 Use "challenges.cloudflare.com", not "https://challenges.cloudflare.com/".'
+			);
+		}
+
+		return host;
+	});
+}
+
+/**
  * Join a domain origin and a path into a full URL.
  *
  * A path that is already an absolute URL is returned untouched so that a
@@ -295,6 +339,7 @@ export function loadConfig({ configPath = 'reglance.json', domain } = {}) {
 		viewports,
 		targets,
 		pixelmatchOptions,
+		blockHosts: normalizeBlockHosts(raw.blockHosts),
 		timeouts: {
 			...DEFAULT_TIMEOUTS,
 			...raw.timeouts,
