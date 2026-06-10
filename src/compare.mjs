@@ -24,8 +24,8 @@ const HTML_DIFF_MAX_BYTES = 2 * 1024 * 1024;
  * Write a comparison artifact, surfacing the path and error code on failure
  * (e.g. a full disk or a read-only output dir) instead of an opaque stack.
  *
- * @param {string}        file - The destination path.
- * @param {string|Buffer} data - The contents to write.
+ * @param {string}        file The destination path.
+ * @param {string|Buffer} data The contents to write.
  */
 function writeArtifact(file, data) {
 	try {
@@ -43,9 +43,9 @@ function writeArtifact(file, data) {
  * Returns the image unchanged when it already matches the target dimensions,
  * avoiding a needless full-buffer copy.
  *
- * @param {PNG}    img         - The image to pad.
- * @param {number} targetWidth  - The desired width.
- * @param {number} targetHeight - The desired height.
+ * @param {PNG}    img          The image to pad.
+ * @param {number} targetWidth  The desired width.
+ * @param {number} targetHeight The desired height.
  * @returns {PNG} The padded image (or the original when no padding is needed).
  */
 export function padImage(img, targetWidth, targetHeight) {
@@ -61,9 +61,9 @@ export function padImage(img, targetWidth, targetHeight) {
 /**
  * Compare a single control/capture pair for one target and viewport.
  *
- * @param {object} config   - The normalized config.
- * @param {object} target   - The target ({ key, url }).
- * @param {object} viewport - The viewport definition.
+ * @param {object} config   The normalized config.
+ * @param {object} target   The target ({ key, url }).
+ * @param {object} viewport The viewport definition.
  * @returns {object|null} The comparison result, or null when it can't run.
  */
 export function compareSlug(config, target, viewport) {
@@ -172,8 +172,8 @@ export function compareSlug(config, target, viewport) {
  * Warn when the controls being compared were promoted across more than one
  * `control` run, which means the baseline mixes captures from different times.
  *
- * @param {object} config  - The normalized config.
- * @param {Array}  targets - The targets being compared.
+ * @param {object} config  The normalized config.
+ * @param {Array}  targets The targets being compared.
  */
 function warnOnStaleControls(config, targets) {
 	const slugs = targets.flatMap((target) =>
@@ -202,9 +202,9 @@ function warnOnStaleControls(config, targets) {
  * size (each in-flight comparison holds large RGBA buffers), which is why the
  * concurrency is capped and configurable.
  *
- * @param {object} config      - The normalized config.
- * @param {Array}  jobs        - `{ target, viewport }` work items.
- * @param {number} concurrency - Maximum workers to run at once.
+ * @param {object} config      The normalized config.
+ * @param {Array}  jobs        `{ target, viewport }` work items.
+ * @param {number} concurrency Maximum workers to run at once.
  * @returns {Promise<Array>} The comparison reports (in completion order).
  */
 async function runComparisons(config, jobs, concurrency) {
@@ -265,11 +265,11 @@ async function runComparisons(config, jobs, concurrency) {
 /**
  * Compare every captured target against its control and build the report.
  *
- * @param {object}  config                  - The normalized config.
- * @param {object}  [options]               - Compare options.
- * @param {Array}   [options.only]          - Limit to these target keys.
- * @param {boolean} [options.open]          - Open the report when finished.
- * @param {number}  [options.concurrency]   - Parallel diff workers.
+ * @param {object}  config                The normalized config.
+ * @param {object}  [options]             Compare options.
+ * @param {Array}   [options.only]        Limit to these target keys.
+ * @param {boolean} [options.open]        Open the report when finished.
+ * @param {number}  [options.concurrency] Parallel diff workers.
  */
 export async function compare(config, options = {}) {
 	const { dirs } = config;

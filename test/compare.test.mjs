@@ -10,9 +10,9 @@ import { padImage, compareSlug, compare } from '../src/compare.mjs';
 /**
  * Build a solid-color PNG.
  *
- * @param {number} width  - Image width.
- * @param {number} height - Image height.
- * @param {Array}  rgba   - The [r, g, b, a] fill color.
+ * @param {number} width  Image width.
+ * @param {number} height Image height.
+ * @param {Array}  rgba   The [r, g, b, a] fill color.
  * @returns {PNG} The filled image.
  */
 function solidPng(width, height, rgba) {
@@ -53,9 +53,9 @@ function tempConfig() {
 /**
  * Write control and capture PNGs for the home-desktop slug.
  *
- * @param {object} config  - The normalized config.
- * @param {PNG}    control - The baseline image.
- * @param {PNG}    capture - The latest image.
+ * @param {object} config  The normalized config.
+ * @param {PNG}    control The baseline image.
+ * @param {PNG}    capture The latest image.
  */
 function writePair(config, control, capture) {
 	fs.writeFileSync(

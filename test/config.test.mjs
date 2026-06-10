@@ -21,7 +21,7 @@ const TARGETS = [
 /**
  * Write a reglance config to a fresh temp directory and return its path.
  *
- * @param {object} config - The config object to serialize.
+ * @param {object} config The config object to serialize.
  * @returns {string} The path to the written config file.
  */
 function writeConfig(config) {
@@ -282,14 +282,14 @@ test('normalizeBlockHosts defaults a missing value to an empty list', () => {
 
 test('normalizeBlockHosts lowercases entries and strips a *. prefix', () => {
 	assert.deepEqual(
-		normalizeBlockHosts(['Challenges.Cloudflare.com', '*.kit.com']),
-		['challenges.cloudflare.com', 'kit.com']
+		normalizeBlockHosts(['Captcha.Example.com', '*.cdn.example.net']),
+		['captcha.example.com', 'cdn.example.net']
 	);
 });
 
 test('normalizeBlockHosts rejects a non-array value', () => {
 	assert.throws(
-		() => normalizeBlockHosts('challenges.cloudflare.com'),
+		() => normalizeBlockHosts('captcha.example.com'),
 		/Invalid "blockHosts"/
 	);
 });
@@ -301,11 +301,17 @@ test('normalizeBlockHosts rejects empty and non-string entries', () => {
 
 test('normalizeBlockHosts rejects entries with a scheme, port, or path', () => {
 	assert.throws(
-		() => normalizeBlockHosts(['https://challenges.cloudflare.com']),
+		() => normalizeBlockHosts(['https://captcha.example.com']),
 		/bare hostname/
 	);
-	assert.throws(() => normalizeBlockHosts(['kit.com/path']), /bare hostname/);
-	assert.throws(() => normalizeBlockHosts(['kit.com:8080']), /bare hostname/);
+	assert.throws(
+		() => normalizeBlockHosts(['example.com/path']),
+		/bare hostname/
+	);
+	assert.throws(
+		() => normalizeBlockHosts(['example.com:8080']),
+		/bare hostname/
+	);
 });
 
 test('loadConfig defaults blockHosts to an empty list', () => {
@@ -320,11 +326,11 @@ test('loadConfig normalizes configured blockHosts', () => {
 	const configPath = writeConfig({
 		domain: 'site.test',
 		paths: { home: '/' },
-		blockHosts: ['*.Kit.com', 'challenges.cloudflare.com'],
+		blockHosts: ['*.CDN.example.net', 'captcha.example.com'],
 	});
 	assert.deepEqual(loadConfig({ configPath }).blockHosts, [
-		'kit.com',
-		'challenges.cloudflare.com',
+		'cdn.example.net',
+		'captcha.example.com',
 	]);
 });
 

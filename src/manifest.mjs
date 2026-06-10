@@ -6,7 +6,7 @@ const MANIFEST_NAME = 'manifest.json';
 /**
  * Path to the controls manifest.
  *
- * @param {object} dirs - The normalized config's directory paths.
+ * @param {object} dirs The normalized config's directory paths.
  * @returns {string} The manifest path.
  */
 export function manifestPath(dirs) {
@@ -17,7 +17,7 @@ export function manifestPath(dirs) {
  * Read the controls manifest, returning an empty manifest when absent or
  * unreadable so callers never have to special-case a first run.
  *
- * @param {object} dirs - The normalized config's directory paths.
+ * @param {object} dirs The normalized config's directory paths.
  * @returns {{ updatedAt: string|null, slugs: object }} The manifest.
  */
 export function readManifest(dirs) {
@@ -41,8 +41,8 @@ export function readManifest(dirs) {
 /**
  * Write the controls manifest.
  *
- * @param {object} dirs     - The normalized config's directory paths.
- * @param {object} manifest - The manifest to persist.
+ * @param {object} dirs     The normalized config's directory paths.
+ * @param {object} manifest The manifest to persist.
  */
 export function writeManifest(dirs, manifest) {
 	fs.writeFileSync(
@@ -58,9 +58,11 @@ export function writeManifest(dirs, manifest) {
  * baseline mixes captures from different times (the classic symptom of a
  * partial promotion), which compare should warn about.
  *
- * @param {object}   manifest - The controls manifest.
- * @param {string[]} slugs    - The slugs being compared.
- * @returns {{ runs: string[], oldest: { slug: string, promotedAt: string }|null }}
+ * @param {object}   manifest The controls manifest.
+ * @param {string[]} slugs    The slugs being compared.
+ * @returns {{ runs: string[], oldest: { slug: string, promotedAt: string }|null }} The
+ *   distinct promotion timestamps and the stalest control (null when the
+ *   baseline comes from a single run).
  */
 export function detectStaleControls(manifest, slugs) {
 	const entries = slugs

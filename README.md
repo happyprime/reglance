@@ -53,7 +53,7 @@ self-ignored `.reglance/` directory — nothing to add to `.gitignore`.
 | `output`            | no       | Output directory. Defaults to `.reglance`.                                         |
 | `pixelmatchOptions` | no       | [pixelmatch](https://github.com/mapbox/pixelmatch) options, e.g. `{ "threshold": 0.1 }`. |
 | `timeouts`          | no       | `{ goto, settle }` in ms. `goto` bounds navigation; `settle` bounds each post-scroll wait (network idle, then image load/decode). Defaults `{ goto: 15000, settle: 8000 }`. Raise `settle` for slow, lazy-loading pages. |
-| `blockHosts`        | no       | Hostnames to block requests to during capture, e.g. `["challenges.cloudflare.com"]`. Each entry also blocks its subdomains. |
+| `blockHosts`        | no       | Hostnames to block requests to during capture, e.g. `["captcha.example.com"]`. Each entry also blocks its subdomains. |
 
 `domain` is only needed by `capture`; `control` and `compare` work on the files
 already captured. See [`reglance.example.json`](reglance.example.json) for a full
@@ -61,9 +61,8 @@ example.
 
 `blockHosts` aborts every request to the listed hosts (and their subdomains)
 before it leaves the browser. Use it for third-party embeds that keep the
-network busy and stall capture — CAPTCHA widgets like Cloudflare Turnstile,
-ad tech, analytics — or that render differently on every load and pollute
-diffs. Captures wait for the network to go idle, so a widget that polls or
+network busy and stall capture — CAPTCHA widgets, ad tech, analytics — or
+that render differently on every load and pollute diffs. Captures wait for the network to go idle, so a widget that polls or
 retries indefinitely will otherwise time out every viewport on pages that
 embed it. Entries are bare hostnames; `"example.org"` blocks `example.org` and
 `sub.example.org` alike.

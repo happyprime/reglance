@@ -66,8 +66,8 @@ test('offDomainTargets returns nothing without a configured domain', () => {
 
 test('isBlockedHost matches a listed host exactly', () => {
 	assert.equal(
-		isBlockedHost('https://challenges.cloudflare.com/turnstile/v0/api.js', [
-			'challenges.cloudflare.com',
+		isBlockedHost('https://captcha.example.com/widget/v0/api.js', [
+			'captcha.example.com',
 		]),
 		true
 	);
@@ -81,33 +81,29 @@ test('isBlockedHost matches subdomains of a listed host', () => {
 });
 
 test('isBlockedHost does not match a host that merely ends with an entry', () => {
-	// "cloudflare.com" must not block "notcloudflare.com".
+	// "example.com" must not block "notexample.com".
 	assert.equal(
-		isBlockedHost('https://notcloudflare.com/x.js', ['cloudflare.com']),
+		isBlockedHost('https://notexample.com/x.js', ['example.com']),
 		false
 	);
 });
 
 test('isBlockedHost ignores case in the request host', () => {
 	assert.equal(
-		isBlockedHost('https://Challenges.Cloudflare.com/x', [
-			'challenges.cloudflare.com',
-		]),
+		isBlockedHost('https://Captcha.Example.com/x', ['captcha.example.com']),
 		true
 	);
 });
 
 test('isBlockedHost leaves unlisted hosts alone', () => {
 	assert.equal(
-		isBlockedHost('https://site.test/style.css', [
-			'challenges.cloudflare.com',
-		]),
+		isBlockedHost('https://site.test/style.css', ['captcha.example.com']),
 		false
 	);
 });
 
 test('isBlockedHost never matches URLs without a hostname', () => {
-	const blocked = ['challenges.cloudflare.com'];
+	const blocked = ['captcha.example.com'];
 	assert.equal(isBlockedHost('blob:https://x.test/abc-123', blocked), false);
 	assert.equal(isBlockedHost('data:text/plain,hi', blocked), false);
 	assert.equal(isBlockedHost('not a url', blocked), false);

@@ -11,7 +11,7 @@ let currentPosition = 0.5;
 /**
  * Set the slider position (0 to 1)
  *
- * @param {number} pos
+ * @param {number} pos The position to set, clamped to the 0–1 range.
  */
 function setSliderPosition(pos) {
 	currentPosition = Math.max(0, Math.min(1, pos));
