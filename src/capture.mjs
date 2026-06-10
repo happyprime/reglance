@@ -7,7 +7,7 @@ import { filterTargets, DEFAULT_TIMEOUTS } from './config.mjs';
  * Whether a host is a local development host, for which self-signed/invalid
  * TLS certificates are expected and certificate errors are ignored by default.
  *
- * @param {string|null} host - The hostname (no port).
+ * @param {string|null} host The hostname (no port).
  * @returns {boolean} True for localhost/loopback and .test/.local(.localhost) hosts.
  */
 export function isLocalHost(host) {
@@ -34,8 +34,8 @@ export function isLocalHost(host) {
  * surfacing it makes off-domain (and potentially internal-network) capture a
  * conscious choice rather than a silent one.
  *
- * @param {Array}       targets - The targets to inspect.
- * @param {string|null} domain  - The configured domain origin.
+ * @param {Array}       targets The targets to inspect.
+ * @param {string|null} domain  The configured domain origin.
  * @returns {Array} Targets pointing at a different host.
  */
 export function offDomainTargets(targets, domain) {
@@ -66,8 +66,8 @@ export function offDomainTargets(targets, domain) {
  * "example.org" blocks both "example.org" and "sub.example.org". Non-network
  * URLs (blob:, data:, chrome-extension:) have no hostname and never match.
  *
- * @param {string}   url        - The request URL.
- * @param {string[]} blockHosts - Normalized (lowercase) hostnames.
+ * @param {string}   url        The request URL.
+ * @param {string[]} blockHosts Normalized (lowercase) hostnames.
  * @returns {boolean} True when the request should be blocked.
  */
 export function isBlockedHost(url, blockHosts) {
@@ -102,7 +102,7 @@ export function isBlockedHost(url, blockHosts) {
  * timing race. The height is re-read every step so content that loads and
  * grows the page extends the walk.
  *
- * @param {import('playwright').Page} page - The page to scroll.
+ * @param {import('playwright').Page} page The page to scroll.
  */
 async function autoScroll(page) {
 	await page.evaluate(async () => {
@@ -137,8 +137,8 @@ async function autoScroll(page) {
  * a broken image rejects, which counts as settled — a missing image is the
  * page's actual state, not something to keep waiting on.
  *
- * @param {import('playwright').Page} page    - The page to wait on.
- * @param {number}                    timeout - Max wait in ms.
+ * @param {import('playwright').Page} page    The page to wait on.
+ * @param {number}                    timeout Max wait in ms.
  * @returns {Promise<number>} How many images were still loading at timeout.
  */
 async function waitForImages(page, timeout) {
@@ -171,7 +171,7 @@ async function waitForImages(page, timeout) {
  * per viewport while still letting setViewportSize switch sizes within a group.
  * A viewport without an explicit deviceScaleFactor defaults to 1.
  *
- * @param {Array} viewports - Viewport definitions.
+ * @param {Array} viewports Viewport definitions.
  * @returns {Array<{ deviceScaleFactor: number, viewports: Array }>} Groups in
  *   first-seen DPR order.
  */
@@ -378,13 +378,13 @@ export function shouldFailRun(failures, failOnDegraded = false) {
 /**
  * Capture screenshots for every configured target.
  *
- * @param {object} config                   The normalized config.
- * @param {object} [options]                Capture options.
- * @param {number} [options.concurrency]    Parallel browser contexts.
- * @param {number} [options.staggerDelay]   Delay (ms) between context starts.
- * @param {boolean}[options.skipReload]     Reuse the page between viewports.
- * @param {boolean}[options.failOnDegraded] Exit non-zero if any capture is degraded.
- * @param {Array}  [options.only]           Limit to these target keys.
+ * @param {object}  config                   The normalized config.
+ * @param {object}  [options]                Capture options.
+ * @param {number}  [options.concurrency]    Parallel browser contexts.
+ * @param {number}  [options.staggerDelay]   Delay (ms) between context starts.
+ * @param {boolean} [options.skipReload]     Reuse the page between viewports.
+ * @param {boolean} [options.failOnDegraded] Exit non-zero if any capture is degraded.
+ * @param {Array}   [options.only]           Limit to these target keys.
  * @returns {Promise<{ failures: Array }>} The degraded-slug records.
  */
 export async function capture(config, options = {}) {

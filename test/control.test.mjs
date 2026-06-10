@@ -10,7 +10,7 @@ import { readManifest } from '../src/manifest.mjs';
 /**
  * Build a normalized config backed by a fresh temp output directory.
  *
- * @param {object} [paths] - The paths map for the config.
+ * @param {object} [paths] The paths map for the config.
  * @returns {object} The normalized config.
  */
 function tempConfig(paths = { home: '/' }) {

@@ -39,8 +39,8 @@ function tempConfig() {
 /**
  * A single comparison report record for the index.
  *
- * @param {object} config - The config stub (for path bases).
- * @param {object} [over] - Field overrides.
+ * @param {object} config The config stub (for path bases).
+ * @param {object} [over] Field overrides.
  * @returns {object} The report record.
  */
 function sampleReport(config, over = {}) {

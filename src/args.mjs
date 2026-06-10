@@ -5,10 +5,10 @@
  * instead of silently truncated, and enforces a minimum so a value like
  * `--concurrency=0` cannot reach the capture loop and hang it.
  *
- * @param {string} value     - The raw flag value.
- * @param {string} name      - The flag name, for error messages.
- * @param {object} [options] - Parse options.
- * @param {number} [options.min] - The smallest allowed value (default 1).
+ * @param {string} value         The raw flag value.
+ * @param {string} name          The flag name, for error messages.
+ * @param {object} [options]     Parse options.
+ * @param {number} [options.min] The smallest allowed value (default 1).
  * @returns {number} The parsed integer.
  */
 export function toInt(value, name, { min = 1 } = {}) {

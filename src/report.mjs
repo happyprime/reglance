@@ -13,7 +13,7 @@ const templateCache = new Map();
  * comparison, so caching avoids hundreds of redundant blocking reads (and
  * filesystem contention once compare is parallelized).
  *
- * @param {string} name - The template filename.
+ * @param {string} name The template filename.
  * @returns {string} The template contents.
  */
 function readTemplate(name) {
@@ -28,7 +28,7 @@ function readTemplate(name) {
 /**
  * Copy the report assets (CSS/JS) into the output directory.
  *
- * @param {object} config - The normalized config.
+ * @param {object} config The normalized config.
  */
 export function copyAssets(config) {
 	fs.mkdirSync(config.dirs.assets, { recursive: true });
@@ -40,7 +40,7 @@ export function copyAssets(config) {
 /**
  * Escape HTML special characters.
  *
- * @param {string} str - The string to escape.
+ * @param {string} str The string to escape.
  * @returns {string} The escaped string.
  */
 export function escapeHtml(str) {
@@ -59,7 +59,7 @@ export function escapeHtml(str) {
  * cleanly and only retina / high-density viewports are annotated. The value is
  * a validated positive number (see validateViewports), so it needs no escaping.
  *
- * @param {object} viewport - The viewport definition.
+ * @param {object} viewport The viewport definition.
  * @returns {string} The suffix (with a leading space) or an empty string.
  */
 export function dprLabel(viewport) {
@@ -73,7 +73,7 @@ export function dprLabel(viewport) {
  * JSON.stringify does not neutralize `</script>` or the U+2028/U+2029 line
  * separators, which can break out of the script element, so escape them.
  *
- * @param {*} value - The value to serialize.
+ * @param {*} value The value to serialize.
  * @returns {string} Script-safe JSON.
  */
 function jsonForScript(value) {
@@ -86,11 +86,12 @@ function jsonForScript(value) {
 /**
  * Build an HTML diff report comparing two HTML snapshots.
  *
- * @param {string} html1    - The control HTML.
- * @param {string} html2    - The latest HTML.
- * @param {object} context  - Report context ({ name, urlKey, viewport }).
- * @param {Function} diffLines - The diffLines function from the diff package.
- * @returns {{ hasChanges: boolean, html: string }}
+ * @param {string}   html1     The control HTML.
+ * @param {string}   html2     The latest HTML.
+ * @param {object}   context   Report context ({ name, urlKey, viewport }).
+ * @param {Function} diffLines The diffLines function from the diff package.
+ * @returns {{ hasChanges: boolean, html: string }} Whether the snapshots
+ *   differ, and the rendered diff report.
  */
 export function generateHtmlDiff(html1, html2, context, diffLines) {
 	const { name, urlKey, viewport } = context;
@@ -133,8 +134,8 @@ export function generateHtmlDiff(html1, html2, context, diffLines) {
 /**
  * Generate a single visual comparison report.
  *
- * @param {object} config  - The normalized config.
- * @param {object} report  - The report data for one slug.
+ * @param {object} config The normalized config.
+ * @param {object} report The report data for one slug.
  * @returns {string} Path to the written report.
  */
 export function generateReport(config, report) {
@@ -183,8 +184,8 @@ export function generateReport(config, report) {
 /**
  * Generate the index page summarizing every comparison.
  *
- * @param {object} config  - The normalized config.
- * @param {Array}  reports - The comparison results.
+ * @param {object} config  The normalized config.
+ * @param {Array}  reports The comparison results.
  * @returns {string} Path to the written index file.
  */
 export function generateIndex(config, reports) {

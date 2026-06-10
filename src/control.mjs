@@ -13,10 +13,10 @@ import { readManifest, writeManifest } from './manifest.mjs';
  * when a run promotes fewer captures than expected (leaving older controls in
  * place for the rest).
  *
- * @param {object} config         - The normalized config.
- * @param {object} [options]      - Control options.
- * @param {Array}  [options.only] - Limit to these target keys.
- * @param {string} [options.now]  - ISO timestamp override (for tests).
+ * @param {object} config         The normalized config.
+ * @param {object} [options]      Control options.
+ * @param {Array}  [options.only] Limit to these target keys.
+ * @param {string} [options.now]  ISO timestamp override (for tests).
  * @returns {{ moved: number, expected: number }} Promotion counts.
  */
 export function control(config, options = {}) {
