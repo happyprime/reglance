@@ -10,6 +10,7 @@ import {
 	filterTargets,
 	loadConfig,
 	normalizeBlockHosts,
+	normalizeImageCache,
 	DEFAULT_PIXELMATCH_OPTIONS,
 } from '../src/config.mjs';
 
@@ -371,4 +372,59 @@ test('loadConfig derives a name from the domain host when unset', () => {
 	});
 	const config = loadConfig({ configPath });
 	assert.equal(config.name, 'site.test');
+});
+
+test('normalizeImageCache is disabled when absent or false', () => {
+	assert.deepEqual(normalizeImageCache(undefined), {
+		enabled: false,
+		persist: false,
+	});
+	assert.deepEqual(normalizeImageCache(false), {
+		enabled: false,
+		persist: false,
+	});
+});
+
+test('normalizeImageCache enables a per-run cache with true', () => {
+	assert.deepEqual(normalizeImageCache(true), {
+		enabled: true,
+		persist: false,
+	});
+});
+
+test('normalizeImageCache enables with an options object', () => {
+	assert.deepEqual(normalizeImageCache({}), {
+		enabled: true,
+		persist: false,
+	});
+	assert.deepEqual(normalizeImageCache({ persist: true }), {
+		enabled: true,
+		persist: true,
+	});
+});
+
+test('normalizeImageCache rejects non-boolean, non-object values', () => {
+	assert.throws(() => normalizeImageCache('yes'), /Invalid "imageCache"/);
+	assert.throws(() => normalizeImageCache([true]), /Invalid "imageCache"/);
+});
+
+test('normalizeImageCache rejects a non-boolean persist', () => {
+	assert.throws(
+		() => normalizeImageCache({ persist: 'always' }),
+		/Invalid "imageCache.persist"/
+	);
+});
+
+test('loadConfig exposes imageCache options and the cache directory', () => {
+	const configPath = writeConfig({
+		domain: 'site.test',
+		paths: { home: '/' },
+		imageCache: { persist: true },
+	});
+	const config = loadConfig({ configPath });
+	assert.deepEqual(config.imageCache, { enabled: true, persist: true });
+	assert.equal(
+		config.dirs.imageCache,
+		path.join(config.outputDir, 'image-cache')
+	);
 });

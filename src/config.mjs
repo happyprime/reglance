@@ -229,6 +229,44 @@ export function normalizeBlockHosts(blockHosts) {
 }
 
 /**
+ * Normalize and validate the `imageCache` config value.
+ *
+ * The cache is opt-in: absent (or `false`) leaves capture fetching every
+ * image from the origin as before. `true` enables a per-run cache that is
+ * cleared at the start of each capture; `{ "persist": true }` keeps entries
+ * across runs (cleared on demand with `--fresh-images`).
+ *
+ * @param {*} imageCache The raw config value.
+ * @returns {{ enabled: boolean, persist: boolean }} The normalized options.
+ */
+export function normalizeImageCache(imageCache) {
+	if (imageCache === undefined || imageCache === false) {
+		return { enabled: false, persist: false };
+	}
+
+	if (imageCache === true) {
+		return { enabled: true, persist: false };
+	}
+
+	if (typeof imageCache !== 'object' || Array.isArray(imageCache)) {
+		throw new Error(
+			'❌ Invalid "imageCache": expected true or an options object.\n' +
+				'💡 Use true for a per-run cache, or { "persist": true } to keep it across runs.'
+		);
+	}
+
+	const { persist = false } = imageCache;
+
+	if (typeof persist !== 'boolean') {
+		throw new Error(
+			`❌ Invalid "imageCache.persist": expected true or false, got ${JSON.stringify(persist)}.`
+		);
+	}
+
+	return { enabled: true, persist };
+}
+
+/**
  * Join a domain origin and a path into a full URL.
  *
  * A path that is already an absolute URL is returned untouched so that a
@@ -340,6 +378,7 @@ export function loadConfig({ configPath = 'reglance.json', domain } = {}) {
 		targets,
 		pixelmatchOptions,
 		blockHosts: normalizeBlockHosts(raw.blockHosts),
+		imageCache: normalizeImageCache(raw.imageCache),
 		timeouts: {
 			...DEFAULT_TIMEOUTS,
 			...raw.timeouts,
@@ -353,6 +392,7 @@ export function loadConfig({ configPath = 'reglance.json', domain } = {}) {
 			compares: path.join(outputDir, 'compares'),
 			reports: path.join(outputDir, 'reports'),
 			assets: path.join(outputDir, 'assets'),
+			imageCache: path.join(outputDir, 'image-cache'),
 		},
 	};
 }

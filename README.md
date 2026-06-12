@@ -54,6 +54,7 @@ self-ignored `.reglance/` directory — nothing to add to `.gitignore`.
 | `pixelmatchOptions` | no       | [pixelmatch](https://github.com/mapbox/pixelmatch) options, e.g. `{ "threshold": 0.1 }`. |
 | `timeouts`          | no       | `{ goto, settle }` in ms. `goto` bounds navigation; `settle` bounds each post-scroll wait (network idle, then image load/decode). Defaults `{ goto: 15000, settle: 8000 }`. Raise `settle` for slow, lazy-loading pages. |
 | `blockHosts`        | no       | Hostnames to block requests to during capture, e.g. `["captcha.example.com"]`. Each entry also blocks its subdomains. |
+| `imageCache`        | no       | Serve repeat image requests from a local cache during capture. `true` for a per-run cache, `{ "persist": true }` to keep it across runs. Off by default. |
 
 `domain` is only needed by `capture`; `control` and `compare` work on the files
 already captured. See [`reglance.example.json`](reglance.example.json) for a full
@@ -66,6 +67,20 @@ that render differently on every load and pollute diffs. Captures wait for the n
 retries indefinitely will otherwise time out every viewport on pages that
 embed it. Entries are bare hostnames; `"example.org"` blocks `example.org` and
 `sub.example.org` alike.
+
+`imageCache` keeps a capture run from swarming the origin with the same image
+requests once per viewport per parallel context. Image requests are intercepted
+in the browser: the first request for a URL is fetched from the origin and
+stored under `.reglance/image-cache/`, and every repeat is answered locally —
+simultaneous requests for the same URL share a single origin fetch. The full
+URL, query string included, is the cache key, so CDN resize variants
+(`photo.jpg?w=400` vs `photo.jpg?w=800`) stay distinct. Nothing in the page is
+rewritten and only images are cached — the HTML, CSS, and JS under test always
+load from the origin. With `true` the cache is cleared at the start of every
+run, so within-run traffic drops with zero risk of a stale image masking a real
+change. `{ "persist": true }` keeps the cache across runs — useful when
+re-capturing repeatedly while iterating on CSS — but a changed origin image
+will then go unnoticed until you clear it with `--fresh-images`.
 
 A viewport's optional `deviceScaleFactor` (device pixel ratio) renders the page
 as it would appear on a higher-density display — use `2` for a retina capture,
@@ -101,6 +116,7 @@ Append path keys to limit a command to specific pages:
 | `--stagger=<ms>`           | capture | Delay between starting contexts (default: 500). `0` disables staggering.          |
 | `--skip-reload`            | capture | Reuse the page between viewports instead of reloading.                            |
 | `--fail-on-degraded`       | capture | Exit non-zero if any page failed to load cleanly (for CI). Default: warn, exit 0. |
+| `--fresh-images`           | capture | Clear a persistent image cache before capturing (see `imageCache`).               |
 | `--insecure`               | capture | Ignore TLS certificate errors for non-local hosts (already ignored for `.test`/localhost). |
 | `--compare-concurrency=<n>`| compare | Parallel diff workers (default: CPU count − 1). Lower it for very tall pages.      |
 | `--no-open`                | compare | Don't open the report when finished.                                              |
@@ -141,6 +157,7 @@ guards against silently baselining bad data:
 	controls/   Baseline screenshots + HTML (+ manifest.json)
 	compares/   Diff images and HTML diffs
 	reports/    The report — open reports/index.html
+	image-cache/ Cached image responses (only with imageCache enabled)
 ```
 
 ## Development

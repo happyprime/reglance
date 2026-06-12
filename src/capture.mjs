@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright';
 import { filterTargets, DEFAULT_TIMEOUTS } from './config.mjs';
+import { openImageCache } from './image-cache.mjs';
 
 /**
  * Whether a host is a local development host, for which self-signed/invalid
@@ -217,6 +218,7 @@ async function captureTarget(browser, target, viewports, dirs, options) {
 		timeouts = DEFAULT_TIMEOUTS,
 		ignoreHTTPSErrors = false,
 		blockHosts = [],
+		imageCache = null,
 	} = options;
 	const failures = [];
 	let currentSlug = target.key;
@@ -227,12 +229,43 @@ async function captureTarget(browser, target, viewports, dirs, options) {
 			deviceScaleFactor: group.deviceScaleFactor,
 		});
 
-		if (blockHosts.length) {
-			await context.route('**/*', (route) => {
-				if (isBlockedHost(route.request().url(), blockHosts)) {
+		if (blockHosts.length || imageCache) {
+			await context.route('**/*', async (route) => {
+				const request = route.request();
+
+				if (isBlockedHost(request.url(), blockHosts)) {
 					return route.abort('blockedbyclient');
 				}
-				return route.continue();
+
+				// Only GET image requests go through the cache; everything
+				// else — documents, CSS, JS — is the content under test and
+				// always loads from the origin.
+				if (
+					!imageCache ||
+					request.resourceType() !== 'image' ||
+					request.method() !== 'GET'
+				) {
+					return route.continue();
+				}
+
+				try {
+					const entry =
+						(await imageCache.get(request.url())) ??
+						(await imageCache.fetchOnce(request.url(), () =>
+							route.fetch()
+						));
+
+					return route.fulfill({
+						status: entry.status,
+						contentType: entry.contentType ?? undefined,
+						body: entry.body,
+					});
+				} catch {
+					// The cache must never break a capture: hand the request
+					// back to the browser to fetch directly. (continue() can
+					// itself fail if the page navigated away mid-flight.)
+					return route.continue().catch(() => {});
+				}
 			});
 		}
 
@@ -384,6 +417,7 @@ export function shouldFailRun(failures, failOnDegraded = false) {
  * @param {number}  [options.staggerDelay]   Delay (ms) between context starts.
  * @param {boolean} [options.skipReload]     Reuse the page between viewports.
  * @param {boolean} [options.failOnDegraded] Exit non-zero if any capture is degraded.
+ * @param {boolean} [options.freshImages]    Clear a persistent image cache first.
  * @param {Array}   [options.only]           Limit to these target keys.
  * @returns {Promise<{ failures: Array }>} The degraded-slug records.
  */
@@ -417,6 +451,27 @@ export async function capture(config, options = {}) {
 	if (config.blockHosts?.length) {
 		console.log(
 			`Blocking hosts (and subdomains): ${config.blockHosts.join(', ')}`
+		);
+	}
+
+	// The image cache answers repeat image requests locally so a run doesn't
+	// swarm the origin once per viewport per context. A per-run cache starts
+	// empty every time; a persistent one carries over unless --fresh-images.
+	let imageCache = null;
+	if (config.imageCache?.enabled) {
+		const persist = config.imageCache.persist;
+		imageCache = openImageCache(config.dirs.imageCache, {
+			clear: !persist || Boolean(options.freshImages),
+		});
+		console.log(
+			`Image cache: ${persist ? 'persistent' : 'per-run'}${
+				persist && options.freshImages ? ' (cleared)' : ''
+			}`
+		);
+	} else if (options.freshImages) {
+		console.warn(
+			'⚠️  --fresh-images has no effect: the image cache is not enabled. ' +
+				'Set "imageCache" in reglance.json.'
 		);
 	}
 
@@ -477,6 +532,7 @@ export async function capture(config, options = {}) {
 						timeouts: config.timeouts,
 						ignoreHTTPSErrors,
 						blockHosts: config.blockHosts ?? [],
+						imageCache,
 					}
 				);
 				failures.push(...targetFailures);
@@ -488,6 +544,13 @@ export async function capture(config, options = {}) {
 		);
 	} finally {
 		await browser.close();
+	}
+
+	if (imageCache) {
+		const { hits, fetches } = imageCache.stats();
+		console.log(
+			`Image cache: ${hits} request(s) served locally, ${fetches} fetched from the origin.`
+		);
 	}
 
 	if (failures.length) {
