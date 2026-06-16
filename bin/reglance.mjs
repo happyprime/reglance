@@ -30,6 +30,8 @@ Options:
   --insecure          Ignore TLS certificate errors for non-local hosts
                       (already ignored for .test/localhost).
   --fail-on-degraded  Exit non-zero if any capture failed to load cleanly.
+  --fresh-images      Clear a persistent image cache before capturing
+                      (requires "imageCache" in reglance.json).
   --compare-concurrency=<n>  Parallel diff workers for compare
                       (default: CPU count - 1; lower it for very tall pages).
   --no-open           Don't open the report automatically after compare.
@@ -51,6 +53,7 @@ const { values, positionals } = parseArgs({
 		'skip-reload': { type: 'boolean' },
 		insecure: { type: 'boolean' },
 		'fail-on-degraded': { type: 'boolean' },
+		'fresh-images': { type: 'boolean' },
 		'compare-concurrency': { type: 'string' },
 		'no-open': { type: 'boolean' },
 		help: { type: 'boolean', short: 'h' },
@@ -93,6 +96,7 @@ async function main() {
 					: undefined,
 				skipReload: values['skip-reload'],
 				failOnDegraded: values['fail-on-degraded'],
+				freshImages: values['fresh-images'],
 				insecure: values.insecure,
 			});
 			break;

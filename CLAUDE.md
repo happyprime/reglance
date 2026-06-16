@@ -28,6 +28,10 @@ The package is a thin CLI over a set of focused modules:
 - `src/capture.mjs` — Playwright capture with parallel contexts, retries,
   auto-scroll, and network-idle waiting. Exports `capture(config, options)`.
 - `src/control.mjs` — Moves the latest captures into `controls/`.
+- `src/image-cache.mjs` — Opt-in disk cache for image responses during capture
+  (`imageCache` in `reglance.json`). Keyed by full URL including query string,
+  with in-flight coalescing; capture intercepts image requests via
+  `context.route()` and fulfills repeats locally instead of hitting the origin.
 - `src/compare.mjs` — pixelmatch comparison + HTML diffing. Exports
   `compare(config, options)`; opens the generated report via `file://`.
 - `src/report.mjs` — All HTML/report generation and asset copying, driven by the
@@ -47,7 +51,7 @@ config works across developers who each run against their own local domain.
 All artifacts are written under the configured output directory (`.reglance` by
 default), which gets a generated `.gitignore` so nothing is committed to the host
 project. Subdirectories: `captures/`, `controls/`, `compares/`, `reports/`,
-`assets/`.
+`assets/`, and `image-cache/` when the image cache is enabled.
 
 ## Templates
 

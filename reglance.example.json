@@ -21,5 +21,6 @@
 		"goto": 15000,
 		"settle": 8000
 	},
-	"blockHosts": ["captcha.example.com"]
+	"blockHosts": ["captcha.example.com"],
+	"imageCache": true
 }
