@@ -89,11 +89,34 @@ test('compareSlug reports zero difference for identical images', () => {
 
 	const result = compareSlug(config, TARGET, VIEWPORT);
 	assert.equal(result.diffPercentage, 0);
-	// Assert the side-effect artifacts are actually written, not just returned.
+	// The diff image is written as a side effect; HTML diff data is returned
+	// inline (no per-result files) for the single-page report to embed.
 	assert.ok(fs.existsSync(result.diffImage));
-	assert.ok(fs.existsSync(result.htmlDiffPath));
-	assert.ok(fs.existsSync(result.reportPath));
-	assert.equal(path.basename(result.reportPath), 'home-desktop-compare.html');
+	assert.equal(result.htmlAdd, 0);
+	assert.equal(result.htmlDel, 0);
+	assert.deepEqual(result.htmlHunks, []);
+});
+
+test('compareSlug emits HTML changed-line counts and hunks', () => {
+	const config = tempConfig();
+	const black = solidPng(10, 10, [0, 0, 0, 255]);
+	writePair(config, black, solidPng(10, 10, [0, 0, 0, 255]));
+
+	fs.mkdirSync(config.dirs.controlsHtml, { recursive: true });
+	fs.mkdirSync(config.dirs.capturesHtml, { recursive: true });
+	fs.writeFileSync(
+		path.join(config.dirs.controlsHtml, 'home-desktop.html'),
+		'<main>\n\t<p>hello</p>\n</main>\n'
+	);
+	fs.writeFileSync(
+		path.join(config.dirs.capturesHtml, 'home-desktop.html'),
+		'<main>\n\t<p>world</p>\n\t<p>extra</p>\n</main>\n'
+	);
+
+	const result = compareSlug(config, TARGET, VIEWPORT);
+	assert.equal(result.htmlAdd, 2);
+	assert.equal(result.htmlDel, 1);
+	assert.ok(result.htmlHunks.some((hunk) => hunk.lines));
 });
 
 test('compareSlug reports full difference for opposite images', () => {

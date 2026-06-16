@@ -9,12 +9,7 @@ import { diffLines } from 'diff';
 import open from 'open';
 import { filterTargets } from './config.mjs';
 import { readManifest, detectStaleControls } from './manifest.mjs';
-import {
-	copyAssets,
-	generateHtmlDiff,
-	generateIndex,
-	generateReport,
-} from './report.mjs';
+import { copyAssets, buildHtmlDiff, generateReport } from './report.mjs';
 
 // Skip the inline HTML line-diff above this snapshot size; line-diffing a
 // multi-MB (often minified) document is slow and produces no useful result.
@@ -85,13 +80,6 @@ export function compareSlug(config, target, viewport) {
 	let img1 = PNG.sync.read(fs.readFileSync(controlImage));
 	let img2 = PNG.sync.read(fs.readFileSync(captureImage));
 
-	// Remember each image's natural size before padding so the report can
-	// declare width/height and reserve the box (no layout shift on decode).
-	const controlWidth = img1.width;
-	const controlHeight = img1.height;
-	const captureWidth = img2.width;
-	const captureHeight = img2.height;
-
 	// Pad both onto a common canvas so width changes (a real layout
 	// regression) surface as a large diff instead of dropping the slug from
 	// the report. Height was already handled this way; width is too now.
@@ -116,10 +104,11 @@ export function compareSlug(config, target, viewport) {
 	const totalPixels = maxWidth * maxHeight;
 	const diffPercentage = (numDiffPixels / totalPixels) * 100;
 
-	// Compare the captured HTML snapshots when both exist.
+	// Compare the captured HTML snapshots when both exist, emitting changed-line
+	// counts and unified-diff hunks the report renders client-side.
 	const controlHtml = path.join(dirs.controlsHtml, `${slug}.html`);
 	const captureHtml = path.join(dirs.capturesHtml, `${slug}.html`);
-	let htmlResult = { hasChanges: false, html: '' };
+	let htmlResult = { add: 0, del: 0, hunks: [], note: '' };
 	if (fs.existsSync(controlHtml) && fs.existsSync(captureHtml)) {
 		// Guard pathological inputs: a multi-MB (often minified) document can
 		// grind through the line diff for no useful result.
@@ -129,43 +118,37 @@ export function compareSlug(config, target, viewport) {
 
 		if (tooBig) {
 			htmlResult = {
-				hasChanges: false,
-				html: `<!doctype html><meta charset="utf-8"><title>${slug}</title><p>HTML snapshot too large to diff inline (over ${Math.round(HTML_DIFF_MAX_BYTES / 1024 / 1024)}MB). Compare the captured HTML files directly.</p>`,
+				add: 0,
+				del: 0,
+				hunks: [],
+				note: `HTML snapshot too large to diff inline (over ${Math.round(HTML_DIFF_MAX_BYTES / 1024 / 1024)}MB). Compare the captured HTML files directly.`,
 			};
 		} else {
-			htmlResult = generateHtmlDiff(
-				fs.readFileSync(controlHtml, 'utf8'),
-				fs.readFileSync(captureHtml, 'utf8'),
-				{ name: config.name, urlKey: target.key, viewport },
-				diffLines
-			);
+			htmlResult = {
+				...buildHtmlDiff(
+					fs.readFileSync(controlHtml, 'utf8'),
+					fs.readFileSync(captureHtml, 'utf8'),
+					diffLines
+				),
+				note: '',
+			};
 		}
 	}
 
-	const htmlDiffPath = path.join(dirs.compares, `${slug}-html-diff.html`);
-	writeArtifact(htmlDiffPath, htmlResult.html);
-
-	const report = {
+	return {
 		url: target.url,
 		urlKey: target.key,
+		path: target.path,
 		viewport,
 		controlImage,
 		captureImage,
 		diffImage,
 		diffPercentage,
-		htmlDiffPath,
-		htmlHasChanges: htmlResult.hasChanges,
-		controlWidth,
-		controlHeight,
-		captureWidth,
-		captureHeight,
-		diffWidth: maxWidth,
-		diffHeight: maxHeight,
+		htmlAdd: htmlResult.add,
+		htmlDel: htmlResult.del,
+		htmlHunks: htmlResult.hunks,
+		htmlNote: htmlResult.note,
 	};
-
-	report.reportPath = generateReport(config, report);
-
-	return report;
 }
 
 /**
@@ -263,6 +246,81 @@ async function runComparisons(config, jobs, concurrency) {
 }
 
 /**
+ * Format a timestamp for the report, e.g. "Jun 12, 2026 · 10:41 AM".
+ *
+ * @param {number|string|Date|null} value A Date, epoch ms, or ISO string.
+ * @returns {string} The formatted timestamp, or an empty string when absent.
+ */
+function formatTimestamp(value) {
+	if (!value) {
+		return '';
+	}
+	const date = new Date(value);
+	if (Number.isNaN(date.getTime())) {
+		return '';
+	}
+	const day = date.toLocaleDateString('en-US', {
+		month: 'short',
+		day: 'numeric',
+		year: 'numeric',
+	});
+	const time = date.toLocaleTimeString('en-US', {
+		hour: 'numeric',
+		minute: '2-digit',
+	});
+	return `${day} · ${time}`;
+}
+
+/**
+ * Format a run duration in milliseconds as a compact string, e.g. "48s".
+ *
+ * @param {number} ms The elapsed milliseconds.
+ * @returns {string} The formatted duration.
+ */
+function formatDuration(ms) {
+	const seconds = Math.max(0, Math.round(ms / 1000));
+	if (seconds < 60) {
+		return `${seconds}s`;
+	}
+	const minutes = Math.floor(seconds / 60);
+	const rest = seconds % 60;
+	return rest ? `${minutes}m ${rest}s` : `${minutes}m`;
+}
+
+/**
+ * Derive the run metadata shown in the report header.
+ *
+ * The capture timestamp comes from the newest compared capture's modified
+ * time; the baseline timestamp from the controls manifest. Both are best
+ * effort — an empty string just hides that line in the report.
+ *
+ * @param {object} config   The normalized config.
+ * @param {Array}  reports  The comparison results.
+ * @param {number} duration The compare run's elapsed milliseconds.
+ * @returns {{ comparedAt: string, baselineAt: string, duration: string }} The metadata.
+ */
+function buildRunMeta(config, reports, duration) {
+	let newestCapture = 0;
+	for (const report of reports) {
+		try {
+			const { mtimeMs } = fs.statSync(report.captureImage);
+			if (mtimeMs > newestCapture) {
+				newestCapture = mtimeMs;
+			}
+		} catch {
+			// A missing capture (already warned about elsewhere) just doesn't
+			// contribute to the timestamp.
+		}
+	}
+
+	return {
+		comparedAt: formatTimestamp(newestCapture || null),
+		baselineAt: formatTimestamp(readManifest(config.dirs).updatedAt),
+		duration: formatDuration(duration),
+	};
+}
+
+/**
  * Compare every captured target against its control and build the report.
  *
  * @param {object}  config                The normalized config.
@@ -276,6 +334,7 @@ export async function compare(config, options = {}) {
 	const { open: openReport = true } = options;
 	const concurrency =
 		options.concurrency ?? Math.max(1, availableParallelism() - 1);
+	const startedAt = Date.now();
 
 	fs.mkdirSync(dirs.compares, { recursive: true });
 	fs.mkdirSync(dirs.reports, { recursive: true });
@@ -299,7 +358,8 @@ export async function compare(config, options = {}) {
 		return;
 	}
 
-	const indexPath = generateIndex(config, reports);
+	const meta = buildRunMeta(config, reports, Date.now() - startedAt);
+	const indexPath = generateReport(config, reports, meta);
 	const reportUrl = pathToFileURL(indexPath).href;
 
 	console.log(`\n✅ Comparison complete (${reports.length} comparisons)`);
