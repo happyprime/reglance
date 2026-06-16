@@ -155,10 +155,17 @@ guards against silently baselining bad data:
 .reglance/
 	captures/   Latest screenshots + HTML snapshots
 	controls/   Baseline screenshots + HTML (+ manifest.json)
-	compares/   Diff images and HTML diffs
+	compares/   Diff images
 	reports/    The report — open reports/index.html
+	assets/     Report stylesheet + script
 	image-cache/ Cached image responses (only with imageCache enabled)
 ```
+
+The report is a single `reports/index.html` that embeds every result as JSON
+and renders three views client-side from the URL hash — a triage overview
+(grouped by page, changed-only by default, keyboard-navigable), a comparison
+view (swipe, side-by-side, onion skin, diff overlay, blink), and a unified HTML
+diff. It opens straight from disk with no network access.
 
 ## Development
 

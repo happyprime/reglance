@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { diffLines } from 'diff';
 import {
-	generateIndex,
 	generateReport,
-	generateHtmlDiff,
+	buildHtmlDiff,
 	escapeHtml,
 	dprLabel,
 } from '../src/report.mjs';
@@ -22,6 +22,7 @@ function tempConfig() {
 	fs.mkdirSync(reports, { recursive: true });
 	return {
 		name: 'My Site',
+		domain: 'https://site.test',
 		viewports: [{ name: 'desktop', width: 1920, height: 1080 }],
 		pixelmatchOptions: {
 			threshold: 0.1,
@@ -32,6 +33,8 @@ function tempConfig() {
 		dirs: {
 			reports,
 			compares: path.join(outputDir, 'compares'),
+			controls: path.join(outputDir, 'controls'),
+			captures: path.join(outputDir, 'captures'),
 		},
 	};
 }
@@ -47,31 +50,30 @@ function sampleReport(config, over = {}) {
 	return {
 		url: 'https://site.test/',
 		urlKey: 'home',
+		path: '/',
 		viewport: { name: 'desktop', width: 1920, height: 1080 },
-		controlImage: path.join(
-			config.dirs.compares,
-			'home-desktop-control.png'
-		),
-		captureImage: path.join(
-			config.dirs.compares,
-			'home-desktop-capture.png'
-		),
+		controlImage: path.join(config.dirs.controls, 'home-desktop.png'),
+		captureImage: path.join(config.dirs.captures, 'home-desktop.png'),
 		diffImage: path.join(config.dirs.compares, 'home-desktop-diff.png'),
-		htmlDiffPath: path.join(
-			config.dirs.compares,
-			'home-desktop-html-diff.html'
-		),
-		reportPath: path.join(config.dirs.reports, 'home-desktop-compare.html'),
 		diffPercentage: 2.5,
-		htmlHasChanges: true,
-		controlWidth: 1920,
-		controlHeight: 3800,
-		captureWidth: 1920,
-		captureHeight: 4000,
-		diffWidth: 1920,
-		diffHeight: 4000,
+		htmlAdd: 12,
+		htmlDel: 4,
+		htmlHunks: [{ gap: 3 }],
+		htmlNote: '',
 		...over,
 	};
+}
+
+/**
+ * Parse the `window.REGLANCE = {...}` blob out of a generated report.
+ *
+ * @param {string} html The report HTML.
+ * @returns {object} The parsed data blob.
+ */
+function readData(html) {
+	const match = html.match(/window\.REGLANCE = (.*?);<\/script>/s);
+	assert.ok(match, 'report should embed a window.REGLANCE blob');
+	return JSON.parse(match[1]);
 }
 
 test('escapeHtml escapes all five HTML metacharacters', () => {
@@ -88,270 +90,160 @@ test('dprLabel annotates only non-default device scale factors', () => {
 	assert.equal(dprLabel({ name: 'frac', deviceScaleFactor: 1.5 }), ' @1.5x');
 });
 
-test('generateIndex shows the DPR suffix in the row and viewport filter', () => {
+test('buildHtmlDiff counts added and removed lines', () => {
+	const { add, del } = buildHtmlDiff('a\nb\nc\n', 'a\nB\nc\nd\n', diffLines);
+	// b → B is one removed + one added; d is one more added.
+	assert.equal(add, 2);
+	assert.equal(del, 1);
+});
+
+test('buildHtmlDiff reports no change for identical snapshots', () => {
+	const result = buildHtmlDiff('a\nb\n', 'a\nb\n', diffLines);
+	assert.deepEqual(result, { add: 0, del: 0, hunks: [] });
+});
+
+test('buildHtmlDiff collapses unchanged runs into gap markers', () => {
+	// A change near the top, then many unchanged lines, then a change at the
+	// bottom: the middle run should collapse to a single gap.
+	const lines = (label) =>
+		[label]
+			.concat(Array.from({ length: 30 }, (_, i) => `line ${i}`))
+			.concat(['tail'])
+			.join('\n') + '\n';
+	const { hunks } = buildHtmlDiff(lines('OLD'), lines('NEW'), diffLines);
+	assert.ok(
+		hunks.some((hunk) => typeof hunk.gap === 'number' && hunk.gap > 0),
+		'expected a collapsed gap marker'
+	);
+	// Hunks carry old/new start lines and a lines array.
+	const firstHunk = hunks.find((hunk) => hunk.lines);
+	assert.ok(firstHunk.o >= 1 && firstHunk.n >= 1);
+	assert.ok(Array.isArray(firstHunk.lines));
+});
+
+test('buildHtmlDiff finds the nearest enclosing tag for a hunk header', () => {
+	const before = '<main id="content">\n\t<p>hello</p>\n</main>\n';
+	const after = '<main id="content">\n\t<p>world</p>\n</main>\n';
+	const { hunks } = buildHtmlDiff(before, after, diffLines);
+	const hunk = hunks.find((x) => x.lines);
+	assert.equal(hunk.ctx, '<main id="content">');
+});
+
+test('generateReport embeds a window.REGLANCE blob grouped by page', () => {
+	const config = tempConfig();
+	const html = fs.readFileSync(
+		generateReport(config, [sampleReport(config)], {
+			comparedAt: 'Jun 12, 2026 · 10:41 AM',
+			baselineAt: 'Jun 10, 2026 · 4:03 PM',
+			duration: '48s',
+		}),
+		'utf8'
+	);
+	const data = readData(html);
+
+	assert.equal(data.name, 'My Site');
+	assert.equal(data.domain, 'site.test');
+	assert.equal(data.comparedAt, 'Jun 12, 2026 · 10:41 AM');
+	assert.equal(data.duration, '48s');
+	assert.equal(data.pages.length, 1);
+
+	const page = data.pages[0];
+	assert.equal(page.key, 'home');
+	assert.equal(page.add, 12);
+	assert.equal(page.del, 4);
+	assert.equal(page.max, 2.5);
+
+	const result = page.results.desktop;
+	assert.equal(result.diff, 2.5);
+	assert.equal(result.add, 12);
+	assert.equal(result.del, 4);
+	// Image paths are relative to the reports directory and forward-slashed.
+	assert.equal(result.img.diff, '../compares/home-desktop-diff.png');
+	assert.equal(result.img.control, '../controls/home-desktop.png');
+	assert.deepEqual(result.htmlDiff, [{ gap: 3 }]);
+});
+
+test('generateReport emits viewport metadata with the device pixel ratio', () => {
 	const config = tempConfig();
 	config.viewports = [
 		{ name: 'desktop', width: 1920, height: 1080 },
 		{ name: 'retina', width: 1920, height: 1080, deviceScaleFactor: 2 },
 	];
-	const report = sampleReport(config, {
-		viewport: {
-			name: 'retina',
-			width: 1920,
-			height: 1080,
-			deviceScaleFactor: 2,
-		},
-	});
-	const html = fs.readFileSync(generateIndex(config, [report]), 'utf8');
-
-	// The row's viewport cell carries the suffix.
-	assert.match(html, /retina \(1920x1080\) @2x/);
-	// The filter <option> for the retina viewport is annotated, while the
-	// default-DPR desktop option is left clean.
-	assert.match(
-		html,
-		/<option value="retina">retina \(1920x1080\) @2x<\/option>/
-	);
-	assert.match(
-		html,
-		/<option value="desktop">desktop \(1920x1080\)<\/option>/
-	);
-});
-
-test('generateReport shows the DPR suffix in the meta only when non-default', () => {
-	const config = tempConfig();
-	const retina = sampleReport(config, {
-		viewport: {
-			name: 'retina',
-			width: 1920,
-			height: 1080,
-			deviceScaleFactor: 2,
-		},
-	});
-	const retinaHtml = fs.readFileSync(generateReport(config, retina), 'utf8');
-	assert.match(retinaHtml, /retina \(1920&times;1080\) @2x/);
-
-	// A default 1x viewport gets no suffix.
-	const plainHtml = fs.readFileSync(
-		generateReport(config, sampleReport(config)),
+	const html = fs.readFileSync(
+		generateReport(config, [
+			sampleReport(config),
+			sampleReport(config, {
+				viewport: {
+					name: 'retina',
+					width: 1920,
+					height: 1080,
+					deviceScaleFactor: 2,
+				},
+				diffImage: path.join(
+					config.dirs.compares,
+					'home-retina-diff.png'
+				),
+			}),
+		]),
 		'utf8'
 	);
-	assert.match(plainHtml, /desktop \(1920&times;1080\)<\/span>/);
+	const data = readData(html);
+	assert.deepEqual(data.viewports, [
+		{ name: 'desktop', width: 1920, height: 1080, dpr: 1 },
+		{ name: 'retina', width: 1920, height: 1080, dpr: 2 },
+	]);
 });
 
-test('generateIndex picks the severity class at the threshold boundaries', () => {
-	const config = tempConfig();
-	const cue = (pct) =>
-		fs
-			.readFileSync(
-				generateIndex(config, [
-					sampleReport(config, { diffPercentage: pct }),
-				]),
-				'utf8'
-			)
-			.match(/class="visually-hidden">(\w+) difference:/)[1];
-
-	// Thresholds are `> 1` high and `> 0.1` medium.
-	assert.equal(cue(0.1), 'low'); // not > 0.1
-	assert.equal(cue(0.5), 'medium');
-	assert.equal(cue(1), 'medium'); // not > 1
-	assert.equal(cue(1.5), 'high');
-});
-
-test('generateReport gives the reveal slider ARIA slider semantics', () => {
+test('generateReport carries pixelmatch settings for the popover', () => {
 	const config = tempConfig();
 	const html = fs.readFileSync(
-		generateReport(config, sampleReport(config)),
+		generateReport(config, [sampleReport(config)]),
 		'utf8'
 	);
-	assert.match(html, /role="slider"/);
-	assert.match(html, /aria-label="Reveal amount/);
-	assert.match(html, /aria-valuemin="0"/);
-	assert.match(html, /aria-valuemax="100"/);
-	assert.match(html, /aria-valuenow="50"/);
+	const data = readData(html);
+	assert.deepEqual(data.settings, {
+		threshold: 0.1,
+		includeAA: 'No',
+		alpha: 0.1,
+		diffColor: '255, 0, 0',
+	});
 });
 
-test('generateIndex escapes config/URL values and hardens the diffData sink', () => {
+test('generateReport surfaces the too-large note only when present', () => {
+	const config = tempConfig();
+	const withNote = readData(
+		fs.readFileSync(
+			generateReport(config, [
+				sampleReport(config, { htmlNote: 'too big' }),
+			]),
+			'utf8'
+		)
+	);
+	assert.equal(withNote.pages[0].results.desktop.note, 'too big');
+
+	const without = readData(
+		fs.readFileSync(generateReport(config, [sampleReport(config)]), 'utf8')
+	);
+	assert.equal(without.pages[0].results.desktop.note, undefined);
+});
+
+test('generateReport escapes the page title and hardens the data sink', () => {
 	const config = tempConfig();
 	config.name = '<img src=x onerror=alert(1)>';
-	const report = sampleReport(config, {
-		url: 'https://site.test/?a=1&b=</script>',
-		urlKey: '</script><script>alert(1)</script>',
-	});
-	const html = fs.readFileSync(generateIndex(config, [report]), 'utf8');
-
-	// Config name is escaped in HTML contexts.
-	assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
-	// The URL's & and angle brackets are escaped in the row.
+	const html = fs.readFileSync(
+		generateReport(config, [
+			sampleReport(config, {
+				urlKey: '</script><script>alert(1)</script>',
+			}),
+		]),
+		'utf8'
+	);
+	// The <title> escapes the config name.
 	assert.match(
 		html,
-		/data-url="https:\/\/site\.test\/\?a=1&amp;b=&lt;\/script&gt;"/
+		/<title>&lt;img src=x onerror=alert\(1\)&gt; — Reglance<\/title>/
 	);
-	// The diffData JSON sink neutralizes </script> rather than emitting it raw.
+	// The embedded JSON neutralizes </script> rather than emitting it raw.
 	assert.ok(!html.includes('</script><script>alert(1)'));
 	assert.ok(html.includes('\\u003c/script>\\u003cscript>alert(1)'));
-});
-
-test('generateIndex renders View Diff as a button passing its trigger', () => {
-	const config = tempConfig();
-	const html = fs.readFileSync(
-		generateIndex(config, [sampleReport(config)]),
-		'utf8'
-	);
-	assert.match(
-		html,
-		/<button type="button" class="link-button" onclick="openModal\(window\.diffData, 0, this\)">View Diff<\/button>/
-	);
-	// The old fake anchor is gone.
-	assert.doesNotMatch(html, /<a href="#" onclick="openModal/);
-});
-
-test('generateIndex makes sortable headers keyboard-operable with sort state', () => {
-	const config = tempConfig();
-	const html = fs.readFileSync(
-		generateIndex(config, [sampleReport(config)]),
-		'utf8'
-	);
-
-	// Each sortable header carries an initial aria-sort and a real button.
-	assert.match(html, /<th data-sort="url" aria-sort="none">/);
-	assert.match(html, /<button type="button" class="th-sort">/);
-	// The decorative arrow is hidden from assistive tech.
-	assert.match(html, /class="sort-indicator" aria-hidden="true"/);
-});
-
-test('generateReport announces the toggle and gives descriptive image alts', () => {
-	const config = tempConfig();
-	const html = fs.readFileSync(
-		generateReport(config, sampleReport(config)),
-		'utf8'
-	);
-	// The right-hand label is a live status region so the toggle is announced.
-	assert.match(
-		html,
-		/id="rightLabel"[^>]*role="status"[^>]*aria-live="polite"/
-	);
-	// Alts describe the content (which page, which viewport), not the slot.
-	assert.match(html, /alt="Second capture of home at desktop"/);
-	assert.match(html, /alt="Original \(control\) capture of home at desktop"/);
-});
-
-test('generateReport escapes config-derived values in image alts', () => {
-	const config = tempConfig();
-	const html = fs.readFileSync(
-		generateReport(config, sampleReport(config, { urlKey: 'a"b<c' })),
-		'utf8'
-	);
-	// The quote/angle bracket are escaped, not injected raw into the attribute.
-	assert.match(html, /alt="Second capture of a&quot;b&lt;c at desktop"/);
-});
-
-test('generateReport escapes name/urlKey in the per-comparison template', () => {
-	const config = tempConfig();
-	config.name = '<b>site</b>';
-	const html = fs.readFileSync(
-		generateReport(config, sampleReport(config, { urlKey: '<x>' })),
-		'utf8'
-	);
-	assert.match(html, /&lt;b&gt;site&lt;\/b&gt;/);
-	assert.match(html, /&lt;x&gt;/);
-	assert.doesNotMatch(html, /<h1>[^<]*<b>site<\/b>/);
-});
-
-test('generateHtmlDiff escapes the name and urlKey metadata', () => {
-	const { html } = generateHtmlDiff(
-		'a\n',
-		'b\n',
-		{
-			name: '<img onerror=x>',
-			urlKey: '<k>',
-			viewport: { name: 'desktop', width: 1, height: 1 },
-		},
-		(x, y) => [
-			{ removed: true, value: x },
-			{ added: true, value: y },
-		]
-	);
-	assert.match(html, /&lt;img onerror=x&gt;/);
-	assert.match(html, /&lt;k&gt;/);
-});
-
-test('generateReport declares image dimensions and async decoding', () => {
-	const config = tempConfig();
-	const html = fs.readFileSync(
-		generateReport(config, sampleReport(config)),
-		'utf8'
-	);
-	// baseImage = the capture; overlay = the control. Both carry intrinsic
-	// dimensions so the browser reserves the box (no layout shift).
-	assert.match(
-		html,
-		/id="baseImage"[^>]*width="1920"[^>]*height="4000"[^>]*decoding="async"/
-	);
-	assert.match(html, /width="1920"[^>]*height="3800"[^>]*decoding="async"/);
-});
-
-test('generateIndex carries diff image dimensions for the modal', () => {
-	const config = tempConfig();
-	const html = fs.readFileSync(
-		generateIndex(config, [sampleReport(config)]),
-		'utf8'
-	);
-	assert.match(html, /"diffWidth":1920/);
-	assert.match(html, /"diffHeight":4000/);
-});
-
-test('generateIndex adds a non-color severity cue to the diff percentage', () => {
-	const config = tempConfig();
-	// diffPercentage 2.5 → "high" severity class.
-	const html = fs.readFileSync(
-		generateIndex(config, [sampleReport(config, { diffPercentage: 2.5 })]),
-		'utf8'
-	);
-	assert.match(
-		html,
-		/<span class="visually-hidden">high difference: <\/span>2\.50%/
-	);
-});
-
-test('generateIndex includes a live empty-state row for filtered results', () => {
-	const config = tempConfig();
-	const html = fs.readFileSync(
-		generateIndex(config, [sampleReport(config)]),
-		'utf8'
-	);
-	assert.match(html, /<tr id="emptyRow" hidden>/);
-	assert.match(
-		html,
-		/aria-live="polite">No comparisons match your filters\./
-	);
-});
-
-test('generateIndex labels the modal close/prev/next buttons', () => {
-	const config = tempConfig();
-	const html = fs.readFileSync(
-		generateIndex(config, [sampleReport(config)]),
-		'utf8'
-	);
-	assert.match(html, /aria-label="Close diff viewer"/);
-	assert.match(html, /aria-label="Previous diff"/);
-	assert.match(html, /aria-label="Next diff"/);
-});
-
-test('generateIndex renders the diff modal as a labelled dialog', () => {
-	const config = tempConfig();
-	const html = fs.readFileSync(
-		generateIndex(config, [sampleReport(config)]),
-		'utf8'
-	);
-	assert.match(
-		html,
-		/<div id="diffModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" hidden>/
-	);
-	// The counter is a live region so navigation between diffs is announced.
-	assert.match(html, /id="modalCounter" aria-live="polite"/);
-	// The title uses a real field, not the missing `property` (which rendered
-	// "undefined").
-	assert.doesNotMatch(html, /currentDiff\.property/);
-	assert.match(html, /\$\{currentDiff\.name\}/);
 });

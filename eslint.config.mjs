@@ -1,6 +1,11 @@
 import config from '@happyprime/eslint-config';
 
 export default [
+	{
+		// Design handoff bundle: React/Babel/JSX prototypes kept for reference,
+		// not production code. The real report lives in templates/ and src/.
+		ignores: ['design_handoff_reglance_report/**'],
+	},
 	...config,
 	{
 		// reglance is a CLI: console.log/warn ARE its user-facing output, so

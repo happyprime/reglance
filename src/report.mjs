@@ -6,12 +6,34 @@ const TEMPLATES_DIR = fileURLToPath(new URL('../templates', import.meta.url));
 
 const templateCache = new Map();
 
+// Lines of unchanged context kept around each change in the HTML diff. Runs of
+// unchanged lines longer than twice this are collapsed into a single gap marker.
+const HTML_DIFF_CONTEXT = 3;
+
+// Void elements never enclose a hunk, so they're skipped when looking for the
+// nearest enclosing tag for a hunk header.
+const VOID_ELEMENTS = new Set([
+	'area',
+	'base',
+	'br',
+	'col',
+	'embed',
+	'hr',
+	'img',
+	'input',
+	'link',
+	'meta',
+	'param',
+	'source',
+	'track',
+	'wbr',
+]);
+
 /**
  * Read a template file that ships with the package.
  *
  * Memoized: templates don't change during a run, and these are read once per
- * comparison, so caching avoids hundreds of redundant blocking reads (and
- * filesystem contention once compare is parallelized).
+ * comparison, so caching avoids redundant blocking reads.
  *
  * @param {string} name The template filename.
  * @returns {string} The template contents.
@@ -56,8 +78,7 @@ export function escapeHtml(str) {
  * A device-pixel-ratio suffix for a viewport, e.g. ` @2x`.
  *
  * Returns an empty string at the default ratio of 1 so standard captures read
- * cleanly and only retina / high-density viewports are annotated. The value is
- * a validated positive number (see validateViewports), so it needs no escaping.
+ * cleanly and only retina / high-density viewports are annotated.
  *
  * @param {object} viewport The viewport definition.
  * @returns {string} The suffix (with a leading space) or an empty string.
@@ -84,176 +105,263 @@ function jsonForScript(value) {
 }
 
 /**
- * Build an HTML diff report comparing two HTML snapshots.
+ * A POSIX-style relative path so report URLs work regardless of host OS.
  *
- * @param {string}   html1     The control HTML.
- * @param {string}   html2     The latest HTML.
- * @param {object}   context   Report context ({ name, urlKey, viewport }).
- * @param {Function} diffLines The diffLines function from the diff package.
- * @returns {{ hasChanges: boolean, html: string }} Whether the snapshots
- *   differ, and the rendered diff report.
+ * @param {string} from The directory the path is relative to.
+ * @param {string} to   The target path.
+ * @returns {string} The forward-slashed relative path.
  */
-export function generateHtmlDiff(html1, html2, context, diffLines) {
-	const { name, urlKey, viewport } = context;
-	const changes = diffLines(html1, html2);
-	let hasChanges = false;
+function relPosix(from, to) {
+	return path.relative(from, to).split(path.sep).join('/');
+}
 
-	// Build the diff via an array join rather than repeated `+=` so a large
-	// document doesn't reallocate an ever-growing string per line.
-	const parts = [];
-	for (const part of changes) {
-		const cls = part.added
-			? 'diff-added'
-			: part.removed
-				? 'diff-removed'
-				: 'diff-unchanged';
-		const marker = part.added ? '+' : part.removed ? '-' : ' ';
-		if (part.added || part.removed) {
-			hasChanges = true;
-		}
-		parts.push(
-			`<div class="${cls}"><span class="line-number">${marker}</span><span class="line-content">${escapeHtml(part.value)}</span></div>`
-		);
+/**
+ * Split a snapshot into lines, dropping the single empty element a trailing
+ * newline would otherwise produce so line counts match the document.
+ *
+ * @param {string} text The snapshot text.
+ * @returns {string[]} The lines.
+ */
+function toLines(text) {
+	const lines = text.split('\n');
+	if (lines.length > 1 && lines[lines.length - 1] === '') {
+		lines.pop();
 	}
-	const diffContent = parts.join('');
-
-	const template = readTemplate('html-diff.html');
-	const html = template
-		.replaceAll('{name}', escapeHtml(name))
-		.replaceAll('{urlKey}', escapeHtml(urlKey))
-		.replaceAll('{viewportName}', escapeHtml(viewport.name))
-		.replaceAll('{viewportWidth}', String(viewport.width))
-		.replaceAll('{viewportHeight}', String(viewport.height))
-		.replaceAll('{viewportDpr}', dprLabel(viewport))
-		.replaceAll('{status}', hasChanges ? 'Changes detected' : 'No changes')
-		.replaceAll('{diffContent}', diffContent);
-
-	return { hasChanges, html };
+	return lines;
 }
 
 /**
- * Generate a single visual comparison report.
+ * Find the nearest enclosing open tag above a line, for a hunk header.
  *
- * @param {object} config The normalized config.
- * @param {object} report The report data for one slug.
- * @returns {string} Path to the written report.
+ * Walks the old document backwards from the hunk's first line, balancing
+ * closing tags against opening ones, and returns the first unclosed opening
+ * tag line (e.g. `<main id="content">`). Returns an empty string when none is
+ * found — the heuristic only matches lines that are a single tag, which is the
+ * common case for formatted markup and harmless to miss otherwise.
+ *
+ * @param {string[]} oldLines  The old snapshot's lines.
+ * @param {number}   fromIndex Zero-based index of the hunk's first old line.
+ * @returns {string} The enclosing tag line, or an empty string.
  */
-export function generateReport(config, report) {
-	const { dirs, name, pixelmatchOptions } = config;
-	const { urlKey, viewport, controlImage, captureImage, diffImage } = report;
-
-	let template = readTemplate('report.html');
-
-	// Paths in the report are relative to the reports directory.
-	const rel = (target) => path.relative(dirs.reports, target);
-
-	// Content-describing alts. Escape the config-derived values since they are
-	// injected into an attribute.
-	const where = `${escapeHtml(urlKey)} at ${escapeHtml(viewport.name)}`;
-	const baseAlt = `Second capture of ${where}`;
-	const overlayAlt = `Original (control) capture of ${where}`;
-
-	template = template
-		.replaceAll('{name}', escapeHtml(name))
-		.replaceAll('{baseAlt}', baseAlt)
-		.replaceAll('{overlayAlt}', overlayAlt)
-		.replaceAll('{urlKey}', escapeHtml(urlKey))
-		.replaceAll('{viewportName}', escapeHtml(viewport.name))
-		.replaceAll('{viewportWidth}', String(viewport.width))
-		.replaceAll('{viewportHeight}', String(viewport.height))
-		.replaceAll('{viewportDpr}', dprLabel(viewport))
-		.replaceAll('{originalImage}', rel(controlImage))
-		.replaceAll('{secondImage}', rel(captureImage))
-		.replaceAll('{diffImage}', rel(diffImage))
-		.replaceAll('{controlWidth}', String(report.controlWidth ?? ''))
-		.replaceAll('{controlHeight}', String(report.controlHeight ?? ''))
-		.replaceAll('{captureWidth}', String(report.captureWidth ?? ''))
-		.replaceAll('{captureHeight}', String(report.captureHeight ?? ''))
-		.replaceAll('{diffPercentage}', report.diffPercentage.toFixed(2))
-		.replaceAll('{threshold}', String(pixelmatchOptions.threshold))
-		.replaceAll('{includeAA}', pixelmatchOptions.includeAA ? 'Yes' : 'No')
-		.replaceAll('{alpha}', String(pixelmatchOptions.alpha));
-
-	const filename = `${urlKey}-${viewport.name}-compare.html`;
-	const reportPath = path.join(dirs.reports, filename);
-	fs.writeFileSync(reportPath, template);
-
-	return reportPath;
+function enclosingTag(oldLines, fromIndex) {
+	let depth = 0;
+	for (let i = fromIndex - 1; i >= 0; i--) {
+		const line = oldLines[i]?.trim() ?? '';
+		if (/^<\/[a-zA-Z][\w-]*\s*>$/.test(line)) {
+			depth++;
+			continue;
+		}
+		const open = line.match(/^<([a-zA-Z][\w-]*)\b[^>]*>$/);
+		if (open && !line.endsWith('/>')) {
+			if (VOID_ELEMENTS.has(open[1].toLowerCase())) {
+				continue;
+			}
+			if (depth > 0) {
+				depth--;
+				continue;
+			}
+			return line;
+		}
+	}
+	return '';
 }
 
 /**
- * Generate the index page summarizing every comparison.
+ * Diff two HTML snapshots into changed-line counts and unified-diff hunks.
+ *
+ * Replaces the old boolean "Yes/No" HTML signal: the redesigned report shows
+ * `+added −removed` counts and renders the diff client-side from JSON hunks.
+ * Hunks carry `{ o, n, ctx, lines }` (old/new start line, enclosing tag, and
+ * `['+'|'-'|' ', text]` rows); long unchanged runs collapse to `{ gap: N }`.
+ *
+ * @param {string}   html1     The control (baseline) HTML.
+ * @param {string}   html2     The latest (capture) HTML.
+ * @param {Function} diffLines The diffLines function from the diff package.
+ * @returns {{ add: number, del: number, hunks: Array }} The diff data.
+ */
+export function buildHtmlDiff(html1, html2, diffLines) {
+	const oldLines = toLines(html1);
+	const changes = diffLines(html1, html2);
+
+	// Flatten the part-based diff into per-line tokens carrying their old/new
+	// line numbers, so the hunk builder can emit gutters and headers.
+	const tokens = [];
+	let add = 0;
+	let del = 0;
+	let o = 1;
+	let n = 1;
+	for (const part of changes) {
+		const sign = part.added ? '+' : part.removed ? '-' : ' ';
+		for (const text of toLines(part.value)) {
+			// `oa` is the line's anchor in the old document: its own old line
+			// for context/removed lines, or the line an insertion sits before.
+			if (sign === '+') {
+				tokens.push({ t: '+', s: text, o: null, n, oa: o });
+				n++;
+				add++;
+			} else if (sign === '-') {
+				tokens.push({ t: '-', s: text, o, n: null, oa: o });
+				o++;
+				del++;
+			} else {
+				tokens.push({ t: ' ', s: text, o, n, oa: o });
+				o++;
+				n++;
+			}
+		}
+	}
+
+	if (add === 0 && del === 0) {
+		return { add, del, hunks: [] };
+	}
+
+	// Mark every line within HTML_DIFF_CONTEXT of a change as kept; the rest
+	// collapse into gaps. Contiguous kept runs become hunks.
+	const keep = new Array(tokens.length).fill(false);
+	tokens.forEach((tok, i) => {
+		if (tok.t === ' ') {
+			return;
+		}
+		const lo = Math.max(0, i - HTML_DIFF_CONTEXT);
+		const hi = Math.min(tokens.length - 1, i + HTML_DIFF_CONTEXT);
+		for (let j = lo; j <= hi; j++) {
+			keep[j] = true;
+		}
+	});
+
+	const hunks = [];
+	let i = 0;
+	while (i < tokens.length) {
+		if (!keep[i]) {
+			let gap = 0;
+			while (i < tokens.length && !keep[i]) {
+				gap++;
+				i++;
+			}
+			hunks.push({ gap });
+			continue;
+		}
+		const start = i;
+		const lines = [];
+		let firstChanged = null;
+		while (i < tokens.length && keep[i]) {
+			if (firstChanged === null && tokens[i].t !== ' ') {
+				firstChanged = tokens[i];
+			}
+			lines.push([tokens[i].t, tokens[i].s]);
+			i++;
+		}
+		const head = tokens[start];
+		const hunkO = head.o ?? head.n ?? 1;
+		const hunkN = head.n ?? head.o ?? 1;
+		// Anchor the enclosing-tag search at the first changed line so a tag
+		// shown as leading context still resolves as the hunk's container.
+		const anchor = (firstChanged ?? head).oa;
+		hunks.push({
+			o: hunkO,
+			n: hunkN,
+			ctx: enclosingTag(oldLines, anchor - 1),
+			lines,
+		});
+	}
+
+	return { add, del, hunks };
+}
+
+/**
+ * Assemble the report data blob and write the single-page report.
+ *
+ * The redesigned report is one `index.html` that embeds every result as JSON
+ * (`window.REGLANCE`) and renders the overview, comparison, and HTML-diff
+ * views client-side from the location hash. Image artifacts are referenced by
+ * relative path; nothing is fetched over the network.
  *
  * @param {object} config  The normalized config.
- * @param {Array}  reports The comparison results.
+ * @param {Array}  reports The comparison results (one per slug).
+ * @param {object} [meta]  Run metadata ({ comparedAt, baselineAt, duration }).
  * @returns {string} Path to the written index file.
  */
-export function generateIndex(config, reports) {
-	const { dirs, name, viewports, pixelmatchOptions } = config;
-	const diffViewer = readTemplate('diff-viewer.html');
+export function generateReport(config, reports, meta = {}) {
+	const { dirs, name, domain, viewports, pixelmatchOptions } = config;
+	const rel = (target) => relPosix(dirs.reports, target);
 
-	// Sort reports by visual difference, highest first.
-	const sorted = [...reports].sort(
-		(a, b) => b.diffPercentage - a.diffPercentage
-	);
+	// Group the flat per-slug results into one entry per page, keyed by viewport.
+	const pageMap = new Map();
+	for (const report of reports) {
+		let page = pageMap.get(report.urlKey);
+		if (!page) {
+			page = {
+				key: report.urlKey,
+				url: report.url,
+				path: report.path,
+				results: {},
+			};
+			pageMap.set(report.urlKey, page);
+		}
+		const result = {
+			vp: report.viewport.name,
+			diff: Number(report.diffPercentage.toFixed(4)),
+			add: report.htmlAdd,
+			del: report.htmlDel,
+			img: {
+				control: rel(report.controlImage),
+				capture: rel(report.captureImage),
+				diff: rel(report.diffImage),
+			},
+			htmlDiff: report.htmlHunks,
+		};
+		// Surface the "too large to diff" note only when one is present.
+		if (report.htmlNote) {
+			result.note = report.htmlNote;
+		}
+		page.results[report.viewport.name] = result;
+	}
 
-	const rel = (target) => path.relative(dirs.reports, target);
+	const vpOrder = viewports.map((v) => v.name);
+	const pages = [...pageMap.values()].map((page) => {
+		const results = Object.values(page.results);
+		const max = results.reduce((m, r) => Math.max(m, r.diff), 0);
+		// HTML is captured per viewport but is usually identical; surface the
+		// largest counts so a page-level change is never under-reported.
+		const add = results.reduce((m, r) => Math.max(m, r.add), 0);
+		const del = results.reduce((m, r) => Math.max(m, r.del), 0);
+		return { ...page, max, add, del };
+	});
 
-	const diffData = sorted.map((report) => ({
+	const data = {
 		name,
-		urlKey: report.urlKey,
-		viewport: report.viewport,
-		diffUrl: rel(report.diffImage),
-		htmlDiffUrl: rel(report.htmlDiffPath),
-		diffPercentage: report.diffPercentage,
-		htmlHasChanges: report.htmlHasChanges,
-		diffWidth: report.diffWidth,
-		diffHeight: report.diffHeight,
-	}));
-
-	const rows = sorted
-		.map((report, index) => {
-			const diffClass =
-				report.diffPercentage > 1
-					? 'high'
-					: report.diffPercentage > 0.1
-						? 'medium'
-						: 'low';
-			const htmlDiffClass = report.htmlHasChanges ? 'high' : 'low';
-			const url = escapeHtml(report.url);
-			const viewportName = escapeHtml(report.viewport.name);
-
-			return `
-			<tr data-url="${url}" data-viewport="${viewportName}" data-diff="${report.diffPercentage}" data-index="${index}">
-				<td class="url-cell" title="${url}">${url}</td>
-				<td>${viewportName} (${report.viewport.width}x${report.viewport.height})${dprLabel(report.viewport)}</td>
-				<td class="diff-percentage ${diffClass}"><span class="visually-hidden">${diffClass} difference: </span>${report.diffPercentage.toFixed(2)}%</td>
-				<td class="diff-percentage ${htmlDiffClass}">${report.htmlHasChanges ? 'Yes' : 'No'}</td>
-				<td><a href="${rel(report.reportPath)}">View Report</a></td>
-				<td><button type="button" class="link-button" onclick="openModal(window.diffData, ${index}, this)">View Diff</button></td>
-				<td><a href="${rel(report.htmlDiffPath)}">View HTML Diff</a></td>
-			</tr>`;
-		})
-		.join('');
-
-	const viewportOptions = viewports
-		.map((v) => {
-			const vn = escapeHtml(v.name);
-			return `<option value="${vn}">${vn} (${v.width}x${v.height})${dprLabel(v)}</option>`;
-		})
-		.join('\n\t\t\t\t');
+		domain: domain ? new URL(domain).host : '',
+		comparedAt: meta.comparedAt ?? '',
+		baselineAt: meta.baselineAt ?? '',
+		duration: meta.duration ?? '',
+		settings: {
+			threshold: pixelmatchOptions.threshold,
+			includeAA: pixelmatchOptions.includeAA ? 'Yes' : 'No',
+			alpha: pixelmatchOptions.alpha,
+			diffColor: pixelmatchOptions.diffColor.join(', '),
+		},
+		viewports: viewports.map((v) => ({
+			name: v.name,
+			width: v.width,
+			height: v.height,
+			dpr: v.deviceScaleFactor ?? 1,
+		})),
+		// Sort viewport order inside each page to match the configured order.
+		pages: pages.map((page) => {
+			const ordered = {};
+			for (const vpName of vpOrder) {
+				if (page.results[vpName]) {
+					ordered[vpName] = page.results[vpName];
+				}
+			}
+			return { ...page, results: ordered };
+		}),
+	};
 
 	const template = readTemplate('index.html');
 	const indexHtml = template
-		.replaceAll('{name}', escapeHtml(name))
-		.replaceAll('{threshold}', String(pixelmatchOptions.threshold))
-		.replaceAll('{includeAA}', pixelmatchOptions.includeAA ? 'Yes' : 'No')
-		.replaceAll('{alpha}', String(pixelmatchOptions.alpha))
-		.replaceAll('{diffColor}', pixelmatchOptions.diffColor.join(','))
-		.replaceAll('{viewportOptions}', viewportOptions)
-		.replaceAll('{rows}', rows)
-		.replaceAll('{diffViewer}', diffViewer)
-		.replaceAll('{diffData}', jsonForScript(diffData));
+		.replaceAll('{title}', escapeHtml(name))
+		.replaceAll('{data}', jsonForScript(data));
 
 	const indexPath = path.join(dirs.reports, 'index.html');
 	fs.writeFileSync(indexPath, indexHtml);
