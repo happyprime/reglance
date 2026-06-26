@@ -1095,6 +1095,12 @@
 				flip: function () {
 					blink.flip();
 				},
+				nudgeDelay: function (d) {
+					blink.nudgeDelay(d);
+				},
+				toggleFade: function () {
+					blink.toggleFade();
+				},
 			});
 		}
 
@@ -1111,16 +1117,24 @@
 			);
 		}
 		root.appendChild(stage);
-		root.appendChild(
-			hintbar([
-				{ keys: ['1', '5'], label: 'modes' },
-				{ keys: ['←', '→'], label: 'adjust' },
-				{ keys: ['n', 'p'], label: 'next / prev changed' },
-				{ keys: ['v'], label: 'viewport' },
-				{ keys: ['h'], label: 'HTML' },
-				{ keys: ['esc'], label: 'overview' },
-			])
+		var hints = [
+			{ keys: ['1', '5'], label: 'modes' },
+			{ keys: ['←', '→'], label: 'adjust' },
+		];
+		if (mode === 'blink') {
+			hints.push(
+				{ keys: ['space'], label: 'play / pause' },
+				{ keys: ['[', ']'], label: 'speed' },
+				{ keys: ['f'], label: 'fade' }
+			);
+		}
+		hints.push(
+			{ keys: ['n', 'p'], label: 'next / prev changed' },
+			{ keys: ['v'], label: 'viewport' },
+			{ keys: ['h'], label: 'HTML' },
+			{ keys: ['esc'], label: 'overview' }
 		);
+		root.appendChild(hintbar(hints));
 	}
 
 	/**
@@ -1328,31 +1342,80 @@
 		};
 	}
 
+	// Blink dwell time (ms each image is held) and crossfade preference persist
+	// across slugs and reloads so a chosen rhythm sticks while triaging.
+	var BLINK_MIN = 100;
+	var BLINK_MAX = 3000;
+	var BLINK_STEP = 50;
+
 	/**
-	 * Build the blink stage and its play/pause control.
+	 * Read the saved blink dwell, clamped to the supported range.
+	 *
+	 * @returns {number} The dwell in milliseconds.
+	 */
+	function blinkDelay() {
+		var saved = parseInt(sessionStorage.getItem('rg-blink-delay'), 10);
+		var ms = Number.isFinite(saved) ? saved : 650;
+		return Math.max(BLINK_MIN, Math.min(BLINK_MAX, ms));
+	}
+
+	/**
+	 * Build the blink stage and its play/pause, speed, and fade controls.
+	 *
+	 * Stacks the baseline over the current image and alternates which is
+	 * opaque. The dwell time is adjustable (slider or `[` / `]`); an optional
+	 * crossfade (`f`) eases between the two rather than hard-cutting, which can
+	 * make a small shift easier to spot than an abrupt swap.
 	 *
 	 * @param {HTMLElement} stage The stage container to fill.
 	 * @param {HTMLElement} bar2  The mode-control bar.
 	 * @param {object}      img   The result's image paths.
-	 * @returns {object} `{ setPlaying, toggle, flip }` controls.
+	 * @returns {object} `{ setPlaying, toggle, flip, nudgeDelay, toggleFade }`.
 	 */
 	function buildBlink(stage, bar2, img) {
 		var showBase = false;
 		var playing = true;
-		var layer = h(
-			'div',
-			{ class: 'layer', style: { visibility: 'hidden' } },
-			[h('img', { src: img.control, alt: 'Baseline screenshot' })]
-		);
+		var delay = blinkDelay();
+		var fade = sessionStorage.getItem('rg-blink-fade') === '1';
+
+		var layer = h('div', { class: 'layer blink-layer' }, [
+			h('img', { src: img.control, alt: 'Baseline screenshot' }),
+		]);
 		var label = h('span', { class: 'taglabel l', text: 'current' });
 		var readout = h('b', {
 			style: { color: 'var(--text)' },
 			text: 'current',
 		});
 		var playBtn = h('button', { class: 'ghost-btn', text: 'Pause' });
+		var slider = h('input', {
+			type: 'range',
+			min: String(BLINK_MIN),
+			max: String(BLINK_MAX),
+			step: String(BLINK_STEP),
+			value: String(delay),
+			'aria-label': 'Blink dwell time in milliseconds',
+		});
+		var delayOut = h('span', {
+			class: 'blink-delay',
+			text: delay + 'ms',
+		});
+		var fadeBtn = h('button', {
+			class: 'ghost-btn',
+			text: 'Fade',
+			'aria-pressed': fade ? 'true' : 'false',
+			title: 'Crossfade between images (f)',
+		});
+
+		// Ease no longer than half the dwell so each image still reaches its
+		// own full opacity before the next swap starts.
+		var applyFade = function () {
+			layer.style.transition = fade
+				? 'opacity ' + Math.min(delay / 2, 400) + 'ms linear'
+				: 'none';
+		};
 		var setShowBase = function (b) {
 			showBase = b;
-			layer.style.visibility = b ? 'visible' : 'hidden';
+			layer.style.opacity = b ? '1' : '0';
 			label.textContent = b ? 'baseline' : 'current';
 			readout.textContent = b ? 'baseline' : 'current';
 		};
@@ -1366,14 +1429,51 @@
 			if (p) {
 				blinkTimer = setInterval(function () {
 					setShowBase(!showBase);
-				}, 650);
+				}, delay);
 			}
 		};
+		var setDelay = function (ms) {
+			delay = Math.max(BLINK_MIN, Math.min(BLINK_MAX, ms));
+			sessionStorage.setItem('rg-blink-delay', String(delay));
+			delayOut.textContent = delay + 'ms';
+			slider.value = String(delay);
+			applyFade();
+			// Restart the interval so a change takes effect immediately.
+			if (playing) {
+				setPlaying(true);
+			}
+		};
+		var setFade = function (on) {
+			fade = on;
+			sessionStorage.setItem('rg-blink-fade', on ? '1' : '0');
+			fadeBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+			applyFade();
+		};
+
 		playBtn.addEventListener('click', function () {
 			setPlaying(!playing);
 		});
+		slider.addEventListener('input', function () {
+			setDelay(parseInt(slider.value, 10));
+		});
+		fadeBtn.addEventListener('click', function () {
+			setFade(!fade);
+		});
+
+		applyFade();
+		setShowBase(false);
+
 		bar2.appendChild(
-			h('span', { class: 'modectl' }, [playBtn, 'showing: ', readout])
+			h('span', { class: 'modectl' }, [
+				playBtn,
+				'showing: ',
+				readout,
+				h('span', { class: 'modectl-div' }),
+				'speed',
+				slider,
+				delayOut,
+				fadeBtn,
+			])
 		);
 		stage.appendChild(
 			h('div', { class: 'shot' }, [
@@ -1390,6 +1490,12 @@
 			flip: function () {
 				setPlaying(false);
 				setShowBase(!showBase);
+			},
+			nudgeDelay: function (d) {
+				setDelay(delay + d * BLINK_STEP);
+			},
+			toggleFade: function () {
+				setFade(!fade);
 			},
 		};
 	}
@@ -1438,6 +1544,19 @@
 				e.preventDefault();
 				if (ctx.togglePlay) {
 					ctx.togglePlay();
+				}
+			} else if (
+				(e.key === '[' || e.key === ']') &&
+				ctx.mode === 'blink'
+			) {
+				e.preventDefault();
+				if (ctx.nudgeDelay) {
+					ctx.nudgeDelay(e.key === ']' ? 1 : -1);
+				}
+			} else if (e.key === 'f' && ctx.mode === 'blink') {
+				e.preventDefault();
+				if (ctx.toggleFade) {
+					ctx.toggleFade();
 				}
 			}
 		};
@@ -1709,6 +1828,9 @@
 		cmp: [
 			['Swipe / Side / Onion / Diff / Blink', ['1', '5']],
 			['Adjust slider / flip blink', ['←', '→']],
+			['Play / pause blink', ['space']],
+			['Blink speed (slower / faster)', ['[', ']']],
+			['Toggle blink crossfade', ['f']],
 			['Next / prev changed result', ['n', 'p']],
 			['Cycle viewport', ['v']],
 			['HTML diff', ['h']],
