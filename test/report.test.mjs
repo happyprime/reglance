@@ -33,6 +33,7 @@ function tempConfig() {
 		dirs: {
 			reports,
 			compares: path.join(outputDir, 'compares'),
+			display: path.join(outputDir, 'display'),
 			controls: path.join(outputDir, 'controls'),
 			captures: path.join(outputDir, 'captures'),
 		},
@@ -225,6 +226,44 @@ test('generateReport surfaces the too-large note only when present', () => {
 		fs.readFileSync(generateReport(config, [sampleReport(config)]), 'utf8')
 	);
 	assert.equal(without.pages[0].results.desktop.note, undefined);
+});
+
+test('generateReport links display copies and surfaces the scaled info', () => {
+	const config = tempConfig();
+	const scaled = { capture: { from: [780, 34162], to: [748, 32767] } };
+	const data = readData(
+		fs.readFileSync(
+			generateReport(config, [
+				sampleReport(config, {
+					captureDisplay: path.join(
+						config.dirs.display,
+						'home-desktop-capture.png'
+					),
+					diffDisplay: path.join(
+						config.dirs.display,
+						'home-desktop-diff.png'
+					),
+					scaled,
+				}),
+			]),
+			'utf8'
+		)
+	);
+	const result = data.pages[0].results.desktop;
+	// The report links the browser-safe display copies, not the originals.
+	assert.match(result.img.capture, /display\/home-desktop-capture\.png$/);
+	assert.match(result.img.diff, /display\/home-desktop-diff\.png$/);
+	// The control was not downscaled, so it still points at the original.
+	assert.match(result.img.control, /controls\/home-desktop\.png$/);
+	assert.deepEqual(result.scaled, scaled);
+});
+
+test('generateReport omits scaled when nothing was downscaled', () => {
+	const config = tempConfig();
+	const data = readData(
+		fs.readFileSync(generateReport(config, [sampleReport(config)]), 'utf8')
+	);
+	assert.equal(data.pages[0].results.desktop.scaled, undefined);
 });
 
 test('generateReport escapes the page title and hardens the data sink', () => {

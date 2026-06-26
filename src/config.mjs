@@ -390,6 +390,7 @@ export function loadConfig({ configPath = 'reglance.json', domain } = {}) {
 			controls: path.join(outputDir, 'controls'),
 			controlsHtml: path.join(outputDir, 'controls', 'html'),
 			compares: path.join(outputDir, 'compares'),
+			display: path.join(outputDir, 'display'),
 			reports: path.join(outputDir, 'reports'),
 			assets: path.join(outputDir, 'assets'),
 			imageCache: path.join(outputDir, 'image-cache'),

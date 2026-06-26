@@ -304,12 +304,18 @@ export function generateReport(config, reports, meta = {}) {
 			add: report.htmlAdd,
 			del: report.htmlDel,
 			img: {
-				control: rel(report.controlImage),
-				capture: rel(report.captureImage),
-				diff: rel(report.diffImage),
+				control: rel(report.controlDisplay ?? report.controlImage),
+				capture: rel(report.captureDisplay ?? report.captureImage),
+				diff: rel(report.diffDisplay ?? report.diffImage),
 			},
 			htmlDiff: report.htmlHunks,
 		};
+		// Note any image that had to be shrunk to stay within the browser's
+		// image-decode limit, so the view can flag what's displayed below full
+		// resolution.
+		if (report.scaled) {
+			result.scaled = report.scaled;
+		}
 		// Surface the "too large to diff" note only when one is present.
 		if (report.htmlNote) {
 			result.note = report.htmlNote;

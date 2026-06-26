@@ -1,11 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { PNG } from 'pngjs';
 import {
 	shouldFailRun,
 	isLocalHost,
 	offDomainTargets,
 	groupViewportsByScaleFactor,
 	isBlockedHost,
+	pngDimensions,
 } from '../src/capture.mjs';
 
 const FAILURES = [
@@ -145,4 +150,18 @@ test('groupViewportsByScaleFactor groups viewports that share a DPR', () => {
 			['desktop-2x', 'mobile-2x'],
 		]
 	);
+});
+
+test('pngDimensions reads width and height from the PNG header', () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reglance-cap-'));
+	const file = path.join(dir, 'shot.png');
+	fs.writeFileSync(
+		file,
+		PNG.sync.write(new PNG({ width: 780, height: 34162 }))
+	);
+	assert.deepEqual(pngDimensions(file), { width: 780, height: 34162 });
+});
+
+test('pngDimensions returns null for an unreadable file', () => {
+	assert.equal(pngDimensions('/no/such/file.png'), null);
 });
