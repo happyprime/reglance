@@ -3,6 +3,38 @@ import path from 'node:path';
 import { chromium } from 'playwright';
 import { filterTargets, DEFAULT_TIMEOUTS } from './config.mjs';
 import { openImageCache } from './image-cache.mjs';
+import { MAX_DISPLAY_DIMENSION } from './downscale.mjs';
+
+/**
+ * Read a PNG's pixel dimensions from its IHDR header without decoding it.
+ *
+ * A full-page mobile screenshot can be tens of millions of pixels; the width
+ * and height live at fixed offsets in the first chunk, so a 24-byte read is
+ * enough and avoids inflating the whole image just to measure it.
+ *
+ * @param {string} file The PNG path.
+ * @returns {{ width: number, height: number }|null} The dimensions, or null if
+ *   the header can't be read.
+ */
+export function pngDimensions(file) {
+	let fd;
+	try {
+		fd = fs.openSync(file, 'r');
+		const header = Buffer.alloc(24);
+		fs.readSync(fd, header, 0, 24, 0);
+		// Bytes 0-7 are the PNG signature; the IHDR width/height follow at 16/20.
+		return {
+			width: header.readUInt32BE(16),
+			height: header.readUInt32BE(20),
+		};
+	} catch {
+		return null;
+	} finally {
+		if (fd !== undefined) {
+			fs.closeSync(fd);
+		}
+	}
+}
 
 /**
  * Whether a host is a local development host, for which self-signed/invalid
@@ -372,6 +404,25 @@ async function captureTarget(browser, target, viewports, dirs, options) {
 
 				const imagePath = path.join(dirs.captures, `${slug}.png`);
 				await page.screenshot({ path: imagePath, fullPage: true });
+
+				// Browsers refuse to decode an image past ~32,767px on a side and
+				// show it as broken; tall mobile captures (narrow page, doubled by
+				// a 2x deviceScaleFactor) cross this. The file is still valid and
+				// compare downscales a display copy, but flag it here so the cause
+				// is visible at capture time, not just in the report.
+				const shot = pngDimensions(imagePath);
+				if (
+					shot &&
+					(shot.width > MAX_DISPLAY_DIMENSION ||
+						shot.height > MAX_DISPLAY_DIMENSION)
+				) {
+					console.warn(
+						`  ⚠️  ${slug}: ${shot.width}×${shot.height}px exceeds the browser ` +
+							`image limit (${MAX_DISPLAY_DIMENSION}px) — the report will downscale ` +
+							"it for display. Lower this viewport's deviceScaleFactor to capture " +
+							'it at full size.'
+					);
+				}
 
 				const htmlPath = path.join(dirs.capturesHtml, `${slug}.html`);
 				fs.writeFileSync(htmlPath, await page.content());

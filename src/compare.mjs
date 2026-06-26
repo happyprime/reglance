@@ -10,6 +10,7 @@ import open from 'open';
 import { filterTargets } from './config.mjs';
 import { readManifest, detectStaleControls } from './manifest.mjs';
 import { copyAssets, buildHtmlDiff, generateReport } from './report.mjs';
+import { downscaleToDisplay } from './downscale.mjs';
 
 // Skip the inline HTML line-diff above this snapshot size; line-diffing a
 // multi-MB (often minified) document is slow and produces no useful result.
@@ -77,21 +78,21 @@ export function compareSlug(config, target, viewport) {
 		return null;
 	}
 
-	let img1 = PNG.sync.read(fs.readFileSync(controlImage));
-	let img2 = PNG.sync.read(fs.readFileSync(captureImage));
+	const control = PNG.sync.read(fs.readFileSync(controlImage));
+	const capture = PNG.sync.read(fs.readFileSync(captureImage));
 
 	// Pad both onto a common canvas so width changes (a real layout
 	// regression) surface as a large diff instead of dropping the slug from
 	// the report. Height was already handled this way; width is too now.
-	const maxWidth = Math.max(img1.width, img2.width);
-	const maxHeight = Math.max(img1.height, img2.height);
-	img1 = padImage(img1, maxWidth, maxHeight);
-	img2 = padImage(img2, maxWidth, maxHeight);
+	const maxWidth = Math.max(control.width, capture.width);
+	const maxHeight = Math.max(control.height, capture.height);
+	const padded1 = padImage(control, maxWidth, maxHeight);
+	const padded2 = padImage(capture, maxWidth, maxHeight);
 
 	const diff = new PNG({ width: maxWidth, height: maxHeight });
 	const numDiffPixels = pixelmatch(
-		img1.data,
-		img2.data,
+		padded1.data,
+		padded2.data,
 		diff.data,
 		maxWidth,
 		maxHeight,
@@ -100,6 +101,44 @@ export function compareSlug(config, target, viewport) {
 
 	const diffImage = path.join(dirs.compares, `${slug}-diff.png`);
 	writeArtifact(diffImage, PNG.sync.write(diff));
+
+	// pixelmatch runs at full resolution above; the report, however, is viewed
+	// in a browser that can't decode an image past ~32,767px on a side. Hand
+	// the report a downscaled copy of any oversized image (and remember the
+	// original size so it can say so), leaving the full-res artifact in place
+	// as the source of truth and the baseline pixelmatch compares against.
+	const displayOf = (source, original, name) => {
+		const result = downscaleToDisplay(source);
+		if (!result.downscaled) {
+			return { image: original, scaled: null };
+		}
+		const displayImage = path.join(dirs.display, `${slug}-${name}.png`);
+		writeArtifact(displayImage, PNG.sync.write(result.png));
+		return {
+			image: displayImage,
+			scaled: {
+				from: [result.originalWidth, result.originalHeight],
+				to: [result.width, result.height],
+			},
+		};
+	};
+
+	// control/capture display at their own native size in the report; the diff
+	// is shown at the padded common size.
+	const controlDisp = displayOf(control, controlImage, 'control');
+	const captureDisp = displayOf(capture, captureImage, 'capture');
+	const diffDisp = displayOf(diff, diffImage, 'diff');
+
+	const scaled = {};
+	if (controlDisp.scaled) {
+		scaled.control = controlDisp.scaled;
+	}
+	if (captureDisp.scaled) {
+		scaled.capture = captureDisp.scaled;
+	}
+	if (diffDisp.scaled) {
+		scaled.diff = diffDisp.scaled;
+	}
 
 	const totalPixels = maxWidth * maxHeight;
 	const diffPercentage = (numDiffPixels / totalPixels) * 100;
@@ -143,6 +182,12 @@ export function compareSlug(config, target, viewport) {
 		controlImage,
 		captureImage,
 		diffImage,
+		// Browser-safe paths the report links to (the original when it already
+		// fits, a downscaled copy when it didn't).
+		controlDisplay: controlDisp.image,
+		captureDisplay: captureDisp.image,
+		diffDisplay: diffDisp.image,
+		scaled: Object.keys(scaled).length ? scaled : null,
 		diffPercentage,
 		htmlAdd: htmlResult.add,
 		htmlDel: htmlResult.del,
@@ -337,6 +382,7 @@ export async function compare(config, options = {}) {
 	const startedAt = Date.now();
 
 	fs.mkdirSync(dirs.compares, { recursive: true });
+	fs.mkdirSync(dirs.display, { recursive: true });
 	fs.mkdirSync(dirs.reports, { recursive: true });
 	copyAssets(config);
 
