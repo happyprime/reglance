@@ -386,7 +386,11 @@ kbd {
 .taglabel.l { left: 10px; }
 .taglabel.r { right: 10px; }
 
-.swipe-stage { cursor: col-resize; touch-action: none; }
+.swipe-stage { cursor: col-resize; touch-action: none; user-select: none; }
+/* The images are never the pointer target: the stage handles the whole
+   gesture, and a non-draggable, non-selectable image can't start a native
+   drag that would hijack it. */
+.swipe-stage img { pointer-events: none; -webkit-user-drag: none; user-select: none; }
 .divider { position: absolute; top: 0; bottom: 0; width: 0; z-index: 5; pointer-events: none; }
 .divider::before {
 	content: '';

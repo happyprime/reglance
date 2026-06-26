@@ -1191,7 +1191,13 @@
 	function buildSwipe(stage, img) {
 		var pos = 0.5;
 		var layer = h('div', { class: 'layer' }, [
-			h('img', { src: img.control, alt: 'Baseline screenshot' }),
+			h('img', {
+				src: img.control,
+				alt: 'Baseline screenshot',
+				// String 'false', not boolean: the h() helper drops false-valued
+				// props, and draggable is an enumerated attribute anyway.
+				draggable: 'false',
+			}),
 		]);
 		var divider = h(
 			'div',
@@ -1216,7 +1222,11 @@
 		};
 		var dragging = false;
 		var shot = h('div', { class: 'shot swipe-stage' }, [
-			h('img', { src: img.capture, alt: 'Current screenshot' }),
+			h('img', {
+				src: img.capture,
+				alt: 'Current screenshot',
+				draggable: 'false',
+			}),
 			layer,
 			divider,
 			h('span', { class: 'taglabel l', text: 'baseline' }),
@@ -1226,7 +1236,23 @@
 			var rect = shot.getBoundingClientRect();
 			return clamp01((e.clientX - rect.left) / rect.width);
 		};
+		var endDrag = function (e) {
+			dragging = false;
+			// Release capture so the stage stops receiving pointer events once
+			// the gesture is over.
+			if (e && shot.hasPointerCapture(e.pointerId)) {
+				shot.releasePointerCapture(e.pointerId);
+			}
+		};
 		shot.addEventListener('pointerdown', function (e) {
+			// Primary button / touch / pen only — ignore right- and middle-click.
+			if (e.button !== 0) {
+				return;
+			}
+			// Suppress the browser's native image drag and text selection, which
+			// would otherwise hijack the gesture and fire pointercancel instead
+			// of pointerup, leaving the divider stuck to the cursor.
+			e.preventDefault();
 			dragging = true;
 			shot.setPointerCapture(e.pointerId);
 			setPos(posFromEvent(e));
@@ -1236,7 +1262,11 @@
 				setPos(posFromEvent(e));
 			}
 		});
-		shot.addEventListener('pointerup', function () {
+		// End on up and on cancel/lost-capture, so an interrupted gesture can
+		// never leave dragging stuck on.
+		shot.addEventListener('pointerup', endDrag);
+		shot.addEventListener('pointercancel', endDrag);
+		shot.addEventListener('lostpointercapture', function () {
 			dragging = false;
 		});
 		stage.appendChild(shot);
