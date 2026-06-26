@@ -349,6 +349,13 @@ kbd {
 
 .modectl { display: flex; align-items: center; gap: 10px; color: var(--text3); font-size: 12.5px; white-space: nowrap; }
 .modectl input[type="range"] { accent-color: var(--accent); width: 150px; }
+.modectl-div { width: 1px; align-self: stretch; background: var(--line); margin: 2px 2px; }
+.modectl .blink-delay { font-family: var(--font-mono); color: var(--text2); min-width: 52px; }
+.modectl button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+
+/* Blink crossfade: the easing is set inline (tied to the dwell time); this
+   just establishes opacity as the animated property. */
+.blink-layer { opacity: 0; }
 
 .stage { max-width: 1100px; margin: 6px auto 80px; padding: 0 22px; }
 .stage.wide { max-width: 1500px; }

@@ -168,6 +168,15 @@ and renders three views client-side from the URL hash — a triage overview
 view (swipe, side-by-side, onion skin, diff overlay, blink), and a unified HTML
 diff. It opens straight from disk with no network access.
 
+### Blink mode
+
+Blink mode alternates between the baseline and the current capture in place, so
+a shift shows up as movement. Its dwell time is adjustable — a speed slider, or
+`[` / `]` to slow down / speed up — and an optional crossfade (`f`, or the Fade
+button) eases between the two images instead of hard-cutting, which can make a
+small change easier to catch than an abrupt swap. Both preferences persist
+across pages and reloads.
+
 ### Oversized captures
 
 Browsers refuse to decode an image taller or wider than 32,767px and show it as
