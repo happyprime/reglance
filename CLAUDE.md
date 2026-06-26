@@ -34,6 +34,9 @@ The package is a thin CLI over a set of focused modules:
   `context.route()` and fulfills repeats locally instead of hitting the origin.
 - `src/compare.mjs` — pixelmatch comparison + HTML diffing. Exports
   `compare(config, options)`; opens the generated report via `file://`.
+- `src/downscale.mjs` — area-filter image downscaling. `compare` uses it to
+  produce browser-safe display copies of captures that exceed the ~32,767px
+  decode limit, while pixelmatch still runs against the full-res originals.
 - `src/report.mjs` — Assembles the report data and writes the single-page
   report. `buildHtmlDiff` turns two HTML snapshots into changed-line counts and
   unified-diff hunk JSON; `generateReport` groups the per-slug results into one
@@ -53,6 +56,7 @@ config works across developers who each run against their own local domain.
 All artifacts are written under the configured output directory (`.reglance` by
 default), which gets a generated `.gitignore` so nothing is committed to the host
 project. Subdirectories: `captures/`, `controls/`, `compares/` (diff PNGs only),
+`display/` (downscaled copies of any capture too large for a browser to render),
 `reports/`, `assets/`, and `image-cache/` when the image cache is enabled.
 
 ## Templates

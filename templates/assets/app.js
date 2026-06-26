@@ -874,6 +874,47 @@
 	];
 
 	/**
+	 * A banner shown when an image on screen was downscaled to fit the
+	 * browser's image-decode limit (~32,767px per side). The capture and the
+	 * pixel diff are still full resolution on disk; only what's painted here
+	 * is shrunk.
+	 *
+	 * @param {object} scaled The result's `scaled` map (`{ control?, capture?,
+	 *                        diff? }`, each `{ from:[w,h], to:[w,h] }`).
+	 * @param {string} mode   The active compare mode.
+	 * @returns {HTMLElement} The banner node.
+	 */
+	function scaledNotice(scaled, mode) {
+		// In diff mode the diff image is what's on screen; every other mode
+		// shows the baseline/current pair.
+		var info =
+			mode === 'diff'
+				? scaled.diff || scaled.capture || scaled.control
+				: scaled.capture || scaled.control || scaled.diff;
+		var from = info.from;
+		var to = info.to;
+		var pct = Math.round((to[1] / from[1]) * 100);
+		return h('div', { class: 'scalednote', role: 'note' }, [
+			h('span', { class: 'scalednote-tag', text: 'Downscaled' }),
+			h('span', {
+				class: 'scalednote-text',
+				text:
+					'Too tall for the browser to render at full size — shown at ' +
+					pct +
+					'% (' +
+					from[0] +
+					'×' +
+					from[1] +
+					'px → ' +
+					to[0] +
+					'×' +
+					to[1] +
+					'px). Pixel differences are still measured at full resolution.',
+			}),
+		]);
+	}
+
+	/**
 	 * Render the comparison view for a route, in the persisted compare mode.
 	 *
 	 * @param {object} route The route descriptor (`{ p, vp }`).
@@ -1108,6 +1149,9 @@
 
 		root.appendChild(bar1);
 		root.appendChild(bar2);
+		if (r.scaled) {
+			root.appendChild(scaledNotice(r.scaled, mode));
+		}
 		if (r.diff === 0 && mode !== 'side') {
 			root.appendChild(
 				h('p', {

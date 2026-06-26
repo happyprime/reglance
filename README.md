@@ -156,6 +156,7 @@ guards against silently baselining bad data:
 	captures/   Latest screenshots + HTML snapshots
 	controls/   Baseline screenshots + HTML (+ manifest.json)
 	compares/   Diff images
+	display/    Downscaled copies of any capture too large for the browser to render
 	reports/    The report — open reports/index.html
 	assets/     Report stylesheet + script
 	image-cache/ Cached image responses (only with imageCache enabled)
@@ -175,6 +176,18 @@ a shift shows up as movement. Its dwell time is adjustable — a speed slider, o
 button) eases between the two images instead of hard-cutting, which can make a
 small change easier to catch than an abrupt swap. Both preferences persist
 across pages and reloads.
+
+### Oversized captures
+
+Browsers refuse to decode an image taller or wider than 32,767px and show it as
+a broken/corrupt image. Full-page mobile captures cross this easily — a narrow
+viewport stacks content into a very tall page, and a `deviceScaleFactor` of 2
+doubles the pixel height again. `capture` warns when it writes a screenshot past
+the limit, and `compare` writes a downscaled copy to `display/`, points the
+report at it, and flags the view with a "Downscaled" notice. Pixel diffs are
+still computed against the full-resolution originals; only what the browser
+paints is shrunk. To capture such a page at full resolution instead, lower that
+viewport's `deviceScaleFactor`.
 
 ## Development
 
