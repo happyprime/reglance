@@ -2,6 +2,8 @@
 	"name": "@happyprime/reglance",
 	"version": "2.3.1",
 	"description": "Visual regression at a glance.",
+	"author": "Happy Prime",
+	"license": "MIT",
 	"keywords": [
 		"visual-regression",
 		"screenshots",
@@ -9,21 +11,15 @@
 		"testing"
 	],
 	"homepage": "https://github.com/happyprime/reglance",
-	"bugs": {
-		"url": "https://github.com/happyprime/reglance/issues"
-	},
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/happyprime/reglance.git"
 	},
-	"author": "Happy Prime",
-	"license": "MIT",
-	"publishConfig": {
-		"access": "public"
+	"bugs": {
+		"url": "https://github.com/happyprime/reglance/issues"
 	},
-	"type": "module",
-	"bin": {
-		"reglance": "bin/reglance.mjs"
+	"engines": {
+		"node": ">=20"
 	},
 	"files": [
 		"bin",
@@ -32,14 +28,9 @@
 		"templates",
 		"reglance.example.json"
 	],
-	"engines": {
-		"node": ">=20"
-	},
-	"scripts": {
-		"lint": "eslint .",
-		"fix": "eslint . --fix",
-		"test": "node --test",
-		"postinstall": "node scripts/postinstall.mjs"
+	"type": "module",
+	"bin": {
+		"reglance": "bin/reglance.mjs"
 	},
 	"dependencies": {
 		"diff": "^9.0.0",
@@ -49,6 +40,22 @@
 		"pngjs": "^7.0.0"
 	},
 	"devDependencies": {
-		"@happyprime/eslint-config": "^1.0.0"
+		"@happyprime/eslint-config": "^1.0.0",
+		"@wordpress/npm-package-json-lint-config": "^5.10.0",
+		"npm-package-json-lint": "^8.0.0"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"scripts": {
+		"lint": "npm run lint:js",
+		"fix": "eslint . --fix",
+		"test": "node --test",
+		"postinstall": "node scripts/postinstall.mjs",
+		"lint:js": "eslint .",
+		"lint:package": "node ./node_modules/npm-package-json-lint/dist/cli.js ./package.json"
+	},
+	"npmpackagejsonlint": {
+		"extends": "@wordpress/npm-package-json-lint-config"
 	}
 }
