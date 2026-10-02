@@ -4,7 +4,17 @@ on:
   push:
     branches:
       - trunk
+    # A change to another workflow file is no reason to run this one.
+    paths:
+      - '**'
+      - '!.github/workflows/**'
+      - .github/workflows/test.yml
   pull_request:
+    # A change to another workflow file is no reason to run this one.
+    paths:
+      - '**'
+      - '!.github/workflows/**'
+      - .github/workflows/test.yml
 
 jobs:
   test:
