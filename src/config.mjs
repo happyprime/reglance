@@ -267,6 +267,282 @@ export function normalizeImageCache(imageCache) {
 }
 
 /**
+ * Reports whether a value is a non-null, non-array object.
+ *
+ * @param {*} value The value to check.
+ * @returns {boolean} True for a plain options object.
+ */
+function isObject(value) {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Normalizes and validates the `browser` config value.
+ *
+ * `launchOptions` goes to Playwright's `chromium.launch()` as given (e.g.
+ * `{ "chromiumSandbox": true }`); `userAgent` replaces Chromium's default in
+ * every capture context.
+ *
+ * @param {*} browser The raw config value.
+ * @returns {{ userAgent: string|null, launchOptions: object }} The normalized options.
+ */
+export function normalizeBrowser(browser) {
+	if (browser === undefined) {
+		return { userAgent: null, launchOptions: {} };
+	}
+
+	if (!isObject(browser)) {
+		throw new Error(
+			'❌ Invalid "browser": expected an options object.\n' +
+				'💡 Use { "userAgent": "...", "launchOptions": { "chromiumSandbox": true } }.'
+		);
+	}
+
+	const { userAgent = null, launchOptions = {} } = browser;
+
+	if (
+		userAgent !== null &&
+		(typeof userAgent !== 'string' || !userAgent.trim())
+	) {
+		throw new Error(
+			`❌ Invalid "browser.userAgent": expected a non-empty string, got ${JSON.stringify(userAgent)}.`
+		);
+	}
+
+	if (!isObject(launchOptions)) {
+		throw new Error(
+			`❌ Invalid "browser.launchOptions": expected an object, got ${JSON.stringify(launchOptions)}.`
+		);
+	}
+
+	// Capture appends its own flags to these, so they must be a string list.
+	const { args } = launchOptions;
+	if (
+		args !== undefined &&
+		(!Array.isArray(args) || !args.every((arg) => typeof arg === 'string'))
+	) {
+		throw new Error(
+			`❌ Invalid "browser.launchOptions.args": expected an array of strings, got ${JSON.stringify(args)}.`
+		);
+	}
+
+	return { userAgent, launchOptions };
+}
+
+/**
+ * The values each enumerated `stabilize` option accepts, per Playwright.
+ */
+const STABILIZE_CHOICES = {
+	animations: ['allow', 'disabled'],
+	caret: ['hide', 'initial'],
+	reducedMotion: ['reduce', 'no-preference'],
+};
+
+const STABILIZE_STRINGS = ['timezoneId', 'locale'];
+
+/**
+ * Normalizes and validates the `stabilize` config value.
+ *
+ * Unknown keys are rejected: a misspelled option would otherwise do nothing
+ * and leave the noise it was meant to remove.
+ *
+ * @param {*} stabilize The raw config value.
+ * @returns {object} The options that were set.
+ */
+export function normalizeStabilize(stabilize) {
+	if (stabilize === undefined) {
+		return {};
+	}
+
+	if (!isObject(stabilize)) {
+		throw new Error(
+			'❌ Invalid "stabilize": expected an options object.\n' +
+				'💡 Use { "animations": "disabled", "reducedMotion": "reduce" }.'
+		);
+	}
+
+	for (const [key, value] of Object.entries(stabilize)) {
+		if (STABILIZE_CHOICES[key]) {
+			if (!STABILIZE_CHOICES[key].includes(value)) {
+				throw new Error(
+					`❌ Invalid "stabilize.${key}": expected one of ${STABILIZE_CHOICES[key].map((choice) => `"${choice}"`).join(', ')}, got ${JSON.stringify(value)}.`
+				);
+			}
+		} else if (STABILIZE_STRINGS.includes(key)) {
+			if (typeof value !== 'string' || !value.trim()) {
+				throw new Error(
+					`❌ Invalid "stabilize.${key}": expected a non-empty string, got ${JSON.stringify(value)}.`
+				);
+			}
+		} else {
+			throw new Error(
+				`❌ Unknown "stabilize" option ${JSON.stringify(key)}.\n` +
+					`💡 Use ${[...Object.keys(STABILIZE_CHOICES), ...STABILIZE_STRINGS].join(', ')}.`
+			);
+		}
+	}
+
+	return { ...stabilize };
+}
+
+/**
+ * The navigation used when a config does not set one. `networkidle` keeps the
+ * behavior from before the option existed.
+ */
+export const DEFAULT_NAVIGATION = { waitUntil: 'networkidle' };
+
+/**
+ * Normalizes and validates the `navigation` config value.
+ *
+ * @param {*} navigation The raw config value.
+ * @returns {{ waitUntil: string }} The normalized options.
+ */
+export function normalizeNavigation(navigation) {
+	if (navigation === undefined) {
+		return { ...DEFAULT_NAVIGATION };
+	}
+
+	if (!isObject(navigation)) {
+		throw new Error(
+			'❌ Invalid "navigation": expected an options object.\n' +
+				'💡 Use { "waitUntil": "load" }.'
+		);
+	}
+
+	const { waitUntil = DEFAULT_NAVIGATION.waitUntil } = navigation;
+
+	if (!['load', 'networkidle'].includes(waitUntil)) {
+		throw new Error(
+			`❌ Invalid "navigation.waitUntil": expected "load" or "networkidle", got ${JSON.stringify(waitUntil)}.`
+		);
+	}
+
+	return { waitUntil };
+}
+
+/**
+ * Normalizes and validates the `html` config value.
+ *
+ * Normalization is opt-in. `normalize: true` strips the built-in volatile
+ * values (see `normalizeHtml` in report.mjs); `{ "patterns": [...] }` also
+ * removes every match of each pattern. Patterns compile here so a bad one
+ * fails at load, not partway through a compare.
+ *
+ * @param {*} html The raw config value.
+ * @returns {{ normalize: { enabled: boolean, patterns: string[] } }} The normalized options.
+ */
+export function normalizeHtmlOptions(html) {
+	const off = { normalize: { enabled: false, patterns: [] } };
+
+	if (html === undefined) {
+		return off;
+	}
+
+	if (!isObject(html)) {
+		throw new Error(
+			'❌ Invalid "html": expected an options object.\n' +
+				'💡 Use { "normalize": true }.'
+		);
+	}
+
+	const { normalize = false } = html;
+
+	if (normalize === false) {
+		return off;
+	}
+
+	if (normalize === true) {
+		return { normalize: { enabled: true, patterns: [] } };
+	}
+
+	if (!isObject(normalize)) {
+		throw new Error(
+			'❌ Invalid "html.normalize": expected true or an options object.\n' +
+				'💡 Use true for the built-in rules, or { "patterns": ["..."] } to add your own.'
+		);
+	}
+
+	const { patterns = [] } = normalize;
+
+	if (!Array.isArray(patterns)) {
+		throw new Error(
+			`❌ Invalid "html.normalize.patterns": expected an array of regular expression strings, got ${JSON.stringify(patterns)}.`
+		);
+	}
+
+	for (const pattern of patterns) {
+		if (typeof pattern !== 'string' || !pattern) {
+			throw new Error(
+				`❌ Invalid "html.normalize.patterns" entry ${JSON.stringify(pattern)}: expected a non-empty string.`
+			);
+		}
+		try {
+			new RegExp(pattern, 'g');
+		} catch (error) {
+			throw new Error(
+				`❌ Invalid "html.normalize.patterns" entry ${JSON.stringify(pattern)}: ${error.message}.`
+			);
+		}
+	}
+
+	return { normalize: { enabled: true, patterns } };
+}
+
+/**
+ * Validates a list of selectors to mask in screenshots.
+ *
+ * @param {*}      mask  The raw value.
+ * @param {string} label The config key, for the error message.
+ * @returns {string[]} The selectors.
+ */
+function normalizeMask(mask, label) {
+	if (mask === undefined) {
+		return [];
+	}
+
+	if (
+		!Array.isArray(mask) ||
+		!mask.every(
+			(selector) => typeof selector === 'string' && selector.trim()
+		)
+	) {
+		throw new Error(
+			`❌ Invalid "${label}": expected an array of selectors, got ${JSON.stringify(mask)}.\n` +
+				'💡 Use entries like [".cookie-banner", "#ad-slot"].'
+		);
+	}
+
+	return mask;
+}
+
+/**
+ * Resolves a `paths` entry to its path and mask selectors.
+ *
+ * An entry is a path string, or `{ "path": "/", "mask": [...] }` when the page
+ * needs its own masks.
+ *
+ * @param {string} key   The path key.
+ * @param {*}      entry The raw `paths` value.
+ * @returns {{ path: string, mask: string[] }} The path and its selectors.
+ */
+function normalizePathEntry(key, entry) {
+	if (typeof entry === 'string') {
+		return { path: entry, mask: [] };
+	}
+
+	if (!isObject(entry) || typeof entry.path !== 'string') {
+		throw new Error(
+			`❌ Invalid "paths.${key}": expected a path string or { "path": "/", "mask": [...] }.`
+		);
+	}
+
+	return {
+		path: entry.path,
+		mask: normalizeMask(entry.mask, `paths.${key}.mask`),
+	};
+}
+
+/**
  * Join a domain origin and a path into a full URL.
  *
  * A path that is already an absolute URL is returned untouched so that a
@@ -356,12 +632,19 @@ export function loadConfig({ configPath = 'reglance.json', domain } = {}) {
 
 	const outputDir = path.resolve(raw.output || DEFAULT_OUTPUT_DIR);
 
-	// Build the list of targets to capture and compare.
-	const targets = Object.entries(raw.paths).map(([key, pathname]) => ({
-		key,
-		path: pathname,
-		url: origin ? buildUrl(origin, pathname) : pathname,
-	}));
+	const mask = normalizeMask(raw.mask, 'mask');
+
+	// Build the list of targets to capture and compare. Each target carries
+	// the site-wide masks plus its own.
+	const targets = Object.entries(raw.paths).map(([key, value]) => {
+		const entry = normalizePathEntry(key, value);
+		return {
+			key,
+			path: entry.path,
+			url: origin ? buildUrl(origin, entry.path) : entry.path,
+			mask: [...new Set([...mask, ...entry.mask])],
+		};
+	});
 
 	const pixelmatchOptions = {
 		...DEFAULT_PIXELMATCH_OPTIONS,
@@ -379,6 +662,10 @@ export function loadConfig({ configPath = 'reglance.json', domain } = {}) {
 		pixelmatchOptions,
 		blockHosts: normalizeBlockHosts(raw.blockHosts),
 		imageCache: normalizeImageCache(raw.imageCache),
+		browser: normalizeBrowser(raw.browser),
+		stabilize: normalizeStabilize(raw.stabilize),
+		navigation: normalizeNavigation(raw.navigation),
+		html: normalizeHtmlOptions(raw.html),
 		timeouts: {
 			...DEFAULT_TIMEOUTS,
 			...raw.timeouts,

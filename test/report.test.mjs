@@ -9,6 +9,7 @@ import {
 	buildHtmlDiff,
 	escapeHtml,
 	dprLabel,
+	normalizeHtml,
 } from '../src/report.mjs';
 
 /**
@@ -285,4 +286,72 @@ test('generateReport escapes the page title and hardens the data sink', () => {
 	// The embedded JSON neutralizes </script> rather than emitting it raw.
 	assert.ok(!html.includes('</script><script>alert(1)'));
 	assert.ok(html.includes('\\u003c/script>\\u003cscript>alert(1)'));
+});
+
+test('normalizeHtml strips nonce attributes', () => {
+	assert.equal(
+		normalizeHtml(
+			'<script nonce="abc123">x</script><style nonce=\'q\'></style>'
+		),
+		'<script>x</script><style></style>'
+	);
+});
+
+test('normalizeHtml blanks _wpnonce in URLs and hidden inputs', () => {
+	assert.equal(
+		normalizeHtml(
+			'<a href="/wp-admin/post.php?action=trash&amp;_wpnonce=1a2b3c4d5e&amp;x=1">'
+		),
+		'<a href="/wp-admin/post.php?action=trash&amp;_wpnonce=&amp;x=1">'
+	);
+	assert.equal(
+		normalizeHtml(
+			'<input type="hidden" id="_wpnonce" name="_wpnonce" value="1a2b3c4d5e" />'
+		),
+		'<input type="hidden" id="_wpnonce" name="_wpnonce" value="" />'
+	);
+});
+
+test('normalizeHtml blanks the REST nonce', () => {
+	assert.equal(
+		normalizeHtml(
+			'var wpApiSettings = {"root":"https:\\/\\/site.test\\/wp-json\\/","nonce":"1a2b3c4d5e","versionString":"wp\\/v2\\/"};'
+		),
+		'var wpApiSettings = {"root":"https:\\/\\/site.test\\/wp-json\\/","nonce":"","versionString":"wp\\/v2\\/"};'
+	);
+	assert.equal(
+		normalizeHtml(
+			'wp.apiFetch.nonceMiddleware = wp.apiFetch.createNonceMiddleware( "1a2b3c4d5e" );'
+		),
+		'wp.apiFetch.nonceMiddleware = wp.apiFetch.createNonceMiddleware( "" );'
+	);
+});
+
+test('normalizeHtml blanks asset versions in every separator form', () => {
+	const cases = [
+		['style.css?ver=6.4.2"', 'style.css?ver="'],
+		['app.js?a=1&ver=1.0.3"', 'app.js?a=1&ver="'],
+		['app.js?a=1&amp;ver=1.0.3"', 'app.js?a=1&amp;ver="'],
+		["app.js?a=1&#038;ver=1.0.3'", "app.js?a=1&#038;ver='"],
+		['"src":"app.js?ver=2.0\\"', '"src":"app.js?ver=\\"'],
+	];
+	for (const [input, expected] of cases) {
+		assert.equal(normalizeHtml(input), expected);
+	}
+	// Only a `ver` parameter, not one that ends in "ver".
+	assert.equal(normalizeHtml('x.js?server=1'), 'x.js?server=1');
+});
+
+test('normalizeHtml removes every match of a custom pattern', () => {
+	assert.equal(
+		normalizeHtml('<div data-ts="1700000000" data-ts="1700000001">', [
+			'(?<=data-ts=")\\d+',
+		]),
+		'<div data-ts="" data-ts="">'
+	);
+});
+
+test('normalizeHtml keeps line breaks so diff line numbers hold', () => {
+	const html = '<link href="a.css?ver=1">\n<script nonce="n">\n</script>\n';
+	assert.equal(normalizeHtml(html).split('\n').length, 4);
 });

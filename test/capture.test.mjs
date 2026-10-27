@@ -11,6 +11,10 @@ import {
 	groupViewportsByScaleFactor,
 	isBlockedHost,
 	pngDimensions,
+	browserLaunchOptions,
+	browserContextOptions,
+	screenshotOptions,
+	documentResponse,
 } from '../src/capture.mjs';
 
 const FAILURES = [
@@ -164,4 +168,111 @@ test('pngDimensions reads width and height from the PNG header', () => {
 
 test('pngDimensions returns null for an unreadable file', () => {
 	assert.equal(pngDimensions('/no/such/file.png'), null);
+});
+
+test('browserLaunchOptions passes configured options through', () => {
+	assert.deepEqual(browserLaunchOptions(), {});
+	assert.deepEqual(
+		browserLaunchOptions({ launchOptions: { chromiumSandbox: true } }),
+		{ chromiumSandbox: true }
+	);
+});
+
+test('browserLaunchOptions appends the certificate flag to configured args', () => {
+	const browser = { launchOptions: { args: ['--foo'] } };
+	assert.deepEqual(browserLaunchOptions(browser, true), {
+		args: ['--foo', '--ignore-certificate-errors'],
+	});
+	// The config's own array is left alone.
+	assert.deepEqual(browser.launchOptions.args, ['--foo']);
+});
+
+test('browserContextOptions adds the user agent and context stabilizers', () => {
+	assert.deepEqual(
+		browserContextOptions({
+			deviceScaleFactor: 2,
+			ignoreHTTPSErrors: false,
+			userAgent: 'Checker/1.0',
+			stabilize: {
+				animations: 'disabled',
+				reducedMotion: 'reduce',
+				timezoneId: 'UTC',
+				locale: 'en-US',
+			},
+		}),
+		{
+			ignoreHTTPSErrors: false,
+			deviceScaleFactor: 2,
+			userAgent: 'Checker/1.0',
+			reducedMotion: 'reduce',
+			timezoneId: 'UTC',
+			locale: 'en-US',
+		}
+	);
+});
+
+test('browserContextOptions omits what is not configured', () => {
+	assert.deepEqual(
+		browserContextOptions({
+			deviceScaleFactor: 1,
+			ignoreHTTPSErrors: true,
+		}),
+		{ ignoreHTTPSErrors: true, deviceScaleFactor: 1 }
+	);
+});
+
+test('screenshotOptions adds screenshot stabilizers and mask locators', () => {
+	const page = { locator: (selector) => ({ selector }) };
+	assert.deepEqual(
+		screenshotOptions(page, '/out/home-desktop.png', {
+			stabilize: {
+				animations: 'disabled',
+				caret: 'hide',
+				locale: 'en-US',
+			},
+			mask: ['.ad', '#banner'],
+		}),
+		{
+			path: '/out/home-desktop.png',
+			fullPage: true,
+			animations: 'disabled',
+			caret: 'hide',
+			mask: [{ selector: '.ad' }, { selector: '#banner' }],
+		}
+	);
+	assert.deepEqual(screenshotOptions(page, '/out/a.png'), {
+		path: '/out/a.png',
+		fullPage: true,
+	});
+});
+
+test('documentResponse keeps status, final URL, and the CDN headers', () => {
+	const response = (headers) => ({
+		status: () => 403,
+		url: () => 'https://site.test/after-redirect/',
+		headers: () => headers,
+	});
+	assert.deepEqual(
+		documentResponse(
+			response({
+				server: 'cloudflare',
+				'cf-mitigated': 'challenge',
+				etag: 'x',
+			})
+		),
+		{
+			status: 403,
+			finalUrl: 'https://site.test/after-redirect/',
+			headers: { server: 'cloudflare', 'cf-mitigated': 'challenge' },
+		}
+	);
+	assert.deepEqual(documentResponse(response({})).headers, { server: null });
+});
+
+test('documentResponse reports nulls when no response arrived', () => {
+	assert.deepEqual(documentResponse(null), {
+		status: null,
+		finalUrl: null,
+		headers: { server: null },
+	});
 });

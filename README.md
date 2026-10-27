@@ -46,7 +46,7 @@ self-ignored `.reglance/` directory — nothing to add to `.gitignore`.
 
 | Field               | Required | Description                                                                       |
 | ------------------- | -------- | --------------------------------------------------------------------------------- |
-| `paths`             | yes      | Map of `key` → path. A value may be a full URL to point at a different domain.     |
+| `paths`             | yes      | Map of `key` → path, or `key` → `{ path, mask }`. A path may be a full URL to point at a different domain. |
 | `domain`            | capture  | Default domain. A bare host (`site.test`) becomes `https://site.test`.             |
 | `name`              | no       | Label shown in the report. Defaults to the domain host.                           |
 | `viewports`         | no       | `[{ name, width, height, deviceScaleFactor? }]`. Defaults to `desktop` (1920×1080), `mobile` (390×844). |
@@ -55,6 +55,11 @@ self-ignored `.reglance/` directory — nothing to add to `.gitignore`.
 | `timeouts`          | no       | `{ goto, settle }` in ms. `goto` bounds navigation; `settle` bounds each post-scroll wait (network idle, then image load/decode). Defaults `{ goto: 15000, settle: 8000 }`. Raise `settle` for slow, lazy-loading pages. |
 | `blockHosts`        | no       | Hostnames to block requests to during capture, e.g. `["captcha.example.com"]`. Each entry also blocks its subdomains. |
 | `imageCache`        | no       | Serve repeat image requests from a local cache during capture. `true` for a per-run cache, `{ "persist": true }` to keep it across runs. Off by default. |
+| `mask`              | no       | Selectors painted over in every screenshot, e.g. `[".cookie-banner"]`. Merged with a path's own `mask`. |
+| `browser`           | no       | `{ userAgent, launchOptions }`. `launchOptions` goes to Playwright's `chromium.launch()`. |
+| `stabilize`         | no       | `{ animations, caret, reducedMotion, timezoneId, locale }`. Removes render noise. Unset by default. |
+| `navigation`        | no       | `{ waitUntil }`: `"networkidle"` (default) or `"load"`.                           |
+| `html`              | no       | `{ "normalize": true }` strips nonces and asset versions before the HTML diff. Off by default. |
 
 `domain` is only needed by `capture`; `control` and `compare` work on the files
 already captured. See [`reglance.example.json`](reglance.example.json) for a full
@@ -81,6 +86,68 @@ run, so within-run traffic drops with zero risk of a stale image masking a real
 change. `{ "persist": true }` keeps the cache across runs — useful when
 re-capturing repeatedly while iterating on CSS — but a changed origin image
 will then go unnoticed until you clear it with `--fresh-images`.
+
+`mask` paints a pink box over each element a selector matches before the
+screenshot is taken, so ads, carousels, and cookie banners stop showing up as
+pixel changes. List site-wide selectors at the top level and page-specific ones
+on the path:
+
+```json
+"mask": [".cookie-banner"],
+"paths": {
+	"home": { "path": "/", "mask": [".hero-carousel"] },
+	"blog": "/blog"
+}
+```
+
+Masks only affect the screenshot; the HTML diff still sees the element. Adding a
+mask diffs against existing controls once, until you re-run `reglance control`.
+
+`browser.launchOptions` is passed to `chromium.launch()` as given. Use it for
+flags like `{ "chromiumSandbox": true }`; `args` is appended to, not replaced,
+so `--ignore-certificate-errors` stays on for local hosts. `browser.userAgent`
+is sent by every capture context.
+
+`stabilize` takes these Playwright options:
+
+| Option          | Values                        | Applied at      |
+| --------------- | ----------------------------- | --------------- |
+| `animations`    | `"disabled"`, `"allow"`       | screenshot      |
+| `caret`         | `"hide"`, `"initial"`         | screenshot      |
+| `reducedMotion` | `"reduce"`, `"no-preference"` | browser context |
+| `timezoneId`    | e.g. `"UTC"`                  | browser context |
+| `locale`        | e.g. `"en-US"`                | browser context |
+
+`"animations": "disabled"` runs finite CSS animations and transitions to their
+end and resets infinite ones. Playwright already hides the caret by default.
+`reducedMotion` changes what sites that honor `prefers-reduced-motion` render,
+so turning it on diffs against existing controls once.
+
+`navigation.waitUntil` sets what each page load waits for. `"networkidle"` (the
+default) waits for 500ms with no network traffic, and a page that never goes
+quiet times out and is reported as degraded. `"load"` waits for the `load`
+event only; the network-idle wait after scrolling still runs, bounded by
+`timeouts.settle`, and a timeout there never marks the capture degraded. Use
+`"load"` for pages that poll, stream, or sit behind a bot challenge.
+
+`html.normalize` removes values that change on every request or deploy before
+the HTML snapshots are diffed: CSP `nonce` attributes, `_wpnonce` values in
+URLs and hidden inputs, the REST nonce in `wpApiSettings` and
+`createNonceMiddleware()`, and `ver=` asset versions. The saved snapshots are
+left as captured. Add your own patterns to remove every match of each:
+
+```json
+"html": {
+	"normalize": {
+		"patterns": ["(?<=data-timestamp=\")\\d+"]
+	}
+}
+```
+
+Patterns are JavaScript regular expressions, compiled with the `g` flag. A
+lookbehind keeps the text before the value. A pattern that matches a newline
+shifts the line numbers shown in the diff. `normalizeHtml(html, patterns)` in
+`src/report.mjs` is the same function, exported for testing patterns.
 
 A viewport's optional `deviceScaleFactor` (device pixel ratio) renders the page
 as it would appear on a higher-density display — use `2` for a retina capture,

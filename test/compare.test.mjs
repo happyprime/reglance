@@ -194,3 +194,31 @@ test('compare runs every slug through the worker pool and builds the index', asy
 	assert.ok(fs.existsSync(path.join(dirs.compares, 'home-desktop-diff.png')));
 	assert.ok(fs.existsSync(path.join(dirs.compares, 'home-mobile-diff.png')));
 });
+
+test('compareSlug diffs normalized HTML when html.normalize is on', () => {
+	const config = tempConfig();
+	config.html = { normalize: { enabled: true, patterns: [] } };
+	const black = solidPng(10, 10, [0, 0, 0, 255]);
+	writePair(config, black, solidPng(10, 10, [0, 0, 0, 255]));
+
+	fs.mkdirSync(config.dirs.controlsHtml, { recursive: true });
+	fs.mkdirSync(config.dirs.capturesHtml, { recursive: true });
+	fs.writeFileSync(
+		path.join(config.dirs.controlsHtml, 'home-desktop.html'),
+		'<link href="style.css?ver=1.0">\n<script nonce="aaa"></script>\n'
+	);
+	fs.writeFileSync(
+		path.join(config.dirs.capturesHtml, 'home-desktop.html'),
+		'<link href="style.css?ver=1.1">\n<script nonce="bbb"></script>\n'
+	);
+
+	const result = compareSlug(config, TARGET, VIEWPORT);
+	assert.equal(result.htmlAdd, 0);
+	assert.equal(result.htmlDel, 0);
+
+	// The same snapshots differ when normalization is off.
+	config.html = { normalize: { enabled: false, patterns: [] } };
+	const raw = compareSlug(config, TARGET, VIEWPORT);
+	assert.equal(raw.htmlAdd, 2);
+	assert.equal(raw.htmlDel, 2);
+});

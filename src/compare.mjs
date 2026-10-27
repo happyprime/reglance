@@ -9,7 +9,12 @@ import { diffLines } from 'diff';
 import open from 'open';
 import { filterTargets } from './config.mjs';
 import { readManifest, detectStaleControls } from './manifest.mjs';
-import { copyAssets, buildHtmlDiff, generateReport } from './report.mjs';
+import {
+	copyAssets,
+	buildHtmlDiff,
+	generateReport,
+	normalizeHtml,
+} from './report.mjs';
 import { downscaleToDisplay } from './downscale.mjs';
 
 // Skip the inline HTML line-diff above this snapshot size; line-diffing a
@@ -163,10 +168,17 @@ export function compareSlug(config, target, viewport) {
 				note: `HTML snapshot too large to diff inline (over ${Math.round(HTML_DIFF_MAX_BYTES / 1024 / 1024)}MB). Compare the captured HTML files directly.`,
 			};
 		} else {
+			const normalize = config.html?.normalize;
+			const read = (file) => {
+				const html = fs.readFileSync(file, 'utf8');
+				return normalize?.enabled
+					? normalizeHtml(html, normalize.patterns)
+					: html;
+			};
 			htmlResult = {
 				...buildHtmlDiff(
-					fs.readFileSync(controlHtml, 'utf8'),
-					fs.readFileSync(captureHtml, 'utf8'),
+					read(controlHtml),
+					read(captureHtml),
 					diffLines
 				),
 				note: '',

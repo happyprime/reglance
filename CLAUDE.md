@@ -23,10 +23,13 @@ The package is a thin CLI over a set of focused modules:
   `node:util` `parseArgs`, loads the config, and dispatches to a command module.
 - `src/config.mjs` — Loads and normalizes `reglance.json`. Resolves the domain
   (config or `--domain` flag), builds the list of capture targets
-  (`{ key, path, url }`), and derives output directory paths. The domain is
+  (`{ key, path, url, mask }`), and derives output directory paths. The domain is
   optional here because `control`/`compare` work on files; `capture` enforces it.
 - `src/capture.mjs` — Playwright capture with parallel contexts, retries,
-  auto-scroll, and network-idle waiting. Exports `capture(config, options)`.
+  auto-scroll, and network-idle waiting. Exports `capture(config, options)`,
+  which resolves to `{ failures, responses }`; `responses` holds each slug's
+  main-document `{ status, finalUrl, headers }`, recorded from the `response`
+  event so a navigation timeout still reports it.
 - `src/control.mjs` — Moves the latest captures into `controls/`.
 - `src/image-cache.mjs` — Opt-in disk cache for image responses during capture
   (`imageCache` in `reglance.json`). Keyed by full URL including query string,
@@ -39,7 +42,8 @@ The package is a thin CLI over a set of focused modules:
   decode limit, while pixelmatch still runs against the full-res originals.
 - `src/report.mjs` — Assembles the report data and writes the single-page
   report. `buildHtmlDiff` turns two HTML snapshots into changed-line counts and
-  unified-diff hunk JSON; `generateReport` groups the per-slug results into one
+  unified-diff hunk JSON; `normalizeHtml` strips nonces and asset versions
+  first when `html.normalize` is on; `generateReport` groups the per-slug results into one
   entry per page and embeds them as `window.REGLANCE` in `templates/index.html`.
 
 Command modules take the normalized `config` object and an `options` object;
