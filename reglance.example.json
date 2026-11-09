@@ -2,7 +2,7 @@
 	"name": "My Site",
 	"domain": "https://site.test",
 	"paths": {
-		"home": "/",
+		"home": { "path": "/", "mask": [".hero-carousel"] },
 		"blog": "/blog",
 		"single-post": "/blog/single-post"
 	},
@@ -22,5 +22,22 @@
 		"settle": 8000
 	},
 	"blockHosts": ["captcha.example.com"],
-	"imageCache": true
+	"imageCache": true,
+	"mask": [".cookie-banner"],
+	"browser": {
+		"userAgent": "MySiteVisualCheck/1.0",
+		"launchOptions": { "chromiumSandbox": true }
+	},
+	"stabilize": {
+		"animations": "disabled",
+		"reducedMotion": "reduce",
+		"timezoneId": "UTC",
+		"locale": "en-US"
+	},
+	"navigation": { "waitUntil": "networkidle" },
+	"html": {
+		"normalize": {
+			"patterns": ["(?<=data-timestamp=\")\\d+"]
+		}
+	}
 }

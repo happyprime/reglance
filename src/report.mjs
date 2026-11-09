@@ -29,6 +29,47 @@ const VOID_ELEMENTS = new Set([
 	'wbr',
 ]);
 
+// Values WordPress prints that change per request (nonces) or per deploy
+// (asset versions) without a visible change. Snapshots come from
+// page.content(), which re-serializes the DOM: attributes are double-quoted
+// and `&#038;` comes back as `&amp;`. The raw-markup forms are matched too,
+// for callers that normalize HTML from somewhere else.
+const VOLATILE_HTML = [
+	// CSP nonce attributes. Chromium blanks the value when a CSP header is
+	// present, so the attribute is removed whole either way.
+	[/\snonce=(?:"[^"]*"|'[^']*')/g, ''],
+	// _wpnonce in URLs.
+	[/(\b_wpnonce=)[^&"'\s<>#\\]+/g, '$1'],
+	// _wpnonce in wp_nonce_field() hidden inputs.
+	[/(\bname=(["'])_wpnonce\2[^>]*?\svalue=)(["'])[^"']*\3/g, '$1$3$3'],
+	// The REST nonce in wpApiSettings and in wp-api-fetch's nonce middleware.
+	[/(\bwpApiSettings\s*=\s*\{[^}]*?"nonce"\s*:\s*")[^"]*"/g, '$1"'],
+	[/(\bcreateNonceMiddleware\(\s*)(["'])[^"']*\2/g, '$1$2$2'],
+	// Asset versions: ?ver=, &ver=, &amp;ver=, &#038;ver=.
+	[/([?&](?:amp;|#038;)?ver=)[^&"'\s<>#\\]+/g, '$1'],
+];
+
+/**
+ * Removes per-request and per-deploy values from an HTML snapshot.
+ *
+ * Each entry in `patterns` is a regular expression string. Every match is
+ * removed. Use a lookbehind to keep the text before a value.
+ *
+ * @param {string}   html       The snapshot.
+ * @param {string[]} [patterns] More patterns to remove.
+ * @returns {string} The normalized snapshot.
+ */
+export function normalizeHtml(html, patterns = []) {
+	let text = html;
+	for (const [pattern, replacement] of VOLATILE_HTML) {
+		text = text.replace(pattern, replacement);
+	}
+	for (const pattern of patterns) {
+		text = text.replace(new RegExp(pattern, 'g'), '');
+	}
+	return text;
+}
+
 /**
  * Read a template file that ships with the package.
  *

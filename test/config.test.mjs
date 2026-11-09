@@ -11,6 +11,11 @@ import {
 	loadConfig,
 	normalizeBlockHosts,
 	normalizeImageCache,
+	normalizeBrowser,
+	normalizeStabilize,
+	normalizeNavigation,
+	normalizeHtmlOptions,
+	DEFAULT_NAVIGATION,
 	DEFAULT_PIXELMATCH_OPTIONS,
 } from '../src/config.mjs';
 
@@ -427,4 +432,147 @@ test('loadConfig exposes imageCache options and the cache directory', () => {
 		config.dirs.imageCache,
 		path.join(config.outputDir, 'image-cache')
 	);
+});
+
+test('loadConfig leaves the new capture options at their defaults', () => {
+	const configPath = writeConfig({
+		domain: 'site.test',
+		paths: { home: '/' },
+	});
+	const config = loadConfig({ configPath });
+	assert.deepEqual(config.browser, { userAgent: null, launchOptions: {} });
+	assert.deepEqual(config.stabilize, {});
+	assert.deepEqual(config.navigation, DEFAULT_NAVIGATION);
+	assert.deepEqual(config.html, {
+		normalize: { enabled: false, patterns: [] },
+	});
+	assert.deepEqual(config.targets[0].mask, []);
+});
+
+test('normalizeBrowser accepts a user agent and launch options', () => {
+	assert.deepEqual(
+		normalizeBrowser({
+			userAgent: 'Checker/1.0',
+			launchOptions: { chromiumSandbox: true, args: ['--foo'] },
+		}),
+		{
+			userAgent: 'Checker/1.0',
+			launchOptions: { chromiumSandbox: true, args: ['--foo'] },
+		}
+	);
+});
+
+test('normalizeBrowser rejects bad values', () => {
+	assert.throws(() => normalizeBrowser('x'), /Invalid "browser"/);
+	assert.throws(
+		() => normalizeBrowser({ userAgent: '' }),
+		/Invalid "browser.userAgent"/
+	);
+	assert.throws(
+		() => normalizeBrowser({ launchOptions: [] }),
+		/Invalid "browser.launchOptions"/
+	);
+	assert.throws(
+		() => normalizeBrowser({ launchOptions: { args: '--foo' } }),
+		/Invalid "browser.launchOptions.args"/
+	);
+});
+
+test('normalizeStabilize keeps only the options that were set', () => {
+	assert.deepEqual(normalizeStabilize(undefined), {});
+	assert.deepEqual(
+		normalizeStabilize({ animations: 'disabled', timezoneId: 'UTC' }),
+		{ animations: 'disabled', timezoneId: 'UTC' }
+	);
+});
+
+test('normalizeStabilize rejects unknown keys and bad values', () => {
+	assert.throws(
+		() => normalizeStabilize({ animation: 'disabled' }),
+		/Unknown "stabilize" option "animation"/
+	);
+	assert.throws(
+		() => normalizeStabilize({ caret: 'blink' }),
+		/Invalid "stabilize.caret"/
+	);
+	assert.throws(
+		() => normalizeStabilize({ locale: '' }),
+		/Invalid "stabilize.locale"/
+	);
+	assert.throws(() => normalizeStabilize(null), /Invalid "stabilize"/);
+});
+
+test('normalizeNavigation accepts load and networkidle only', () => {
+	assert.deepEqual(normalizeNavigation({ waitUntil: 'load' }), {
+		waitUntil: 'load',
+	});
+	assert.deepEqual(normalizeNavigation({}), DEFAULT_NAVIGATION);
+	assert.throws(
+		() => normalizeNavigation({ waitUntil: 'domcontentloaded' }),
+		/Invalid "navigation.waitUntil"/
+	);
+});
+
+test('normalizeHtmlOptions is off unless normalize is set', () => {
+	const off = { normalize: { enabled: false, patterns: [] } };
+	assert.deepEqual(normalizeHtmlOptions(undefined), off);
+	assert.deepEqual(normalizeHtmlOptions({}), off);
+	assert.deepEqual(normalizeHtmlOptions({ normalize: false }), off);
+});
+
+test('normalizeHtmlOptions enables the built-ins and custom patterns', () => {
+	assert.deepEqual(normalizeHtmlOptions({ normalize: true }), {
+		normalize: { enabled: true, patterns: [] },
+	});
+	assert.deepEqual(
+		normalizeHtmlOptions({ normalize: { patterns: ['data-ts="\\d+"'] } }),
+		{ normalize: { enabled: true, patterns: ['data-ts="\\d+"'] } }
+	);
+});
+
+test('normalizeHtmlOptions rejects a pattern that does not compile', () => {
+	assert.throws(
+		() => normalizeHtmlOptions({ normalize: { patterns: ['(unclosed'] } }),
+		/Invalid "html.normalize.patterns" entry "\(unclosed"/
+	);
+	assert.throws(
+		() => normalizeHtmlOptions({ normalize: { patterns: 'x' } }),
+		/Invalid "html.normalize.patterns"/
+	);
+});
+
+test('loadConfig merges site-wide and per-path masks', () => {
+	const configPath = writeConfig({
+		domain: 'site.test',
+		mask: ['.cookie-banner'],
+		paths: {
+			home: { path: '/', mask: ['.carousel', '.cookie-banner'] },
+			blog: '/blog',
+		},
+	});
+	const config = loadConfig({ configPath });
+	const [home, blog] = config.targets;
+	assert.equal(home.path, '/');
+	assert.equal(home.url, 'https://site.test/');
+	assert.deepEqual(home.mask, ['.cookie-banner', '.carousel']);
+	assert.deepEqual(blog.mask, ['.cookie-banner']);
+});
+
+test('loadConfig rejects malformed path entries and masks', () => {
+	const bad = [
+		[{ home: { mask: ['.x'] } }, /Invalid "paths.home"/],
+		[{ home: 42 }, /Invalid "paths.home"/],
+		[{ home: { path: '/', mask: '.x' } }, /Invalid "paths.home.mask"/],
+	];
+	for (const [paths, message] of bad) {
+		const configPath = writeConfig({ domain: 'site.test', paths });
+		assert.throws(() => loadConfig({ configPath }), message);
+	}
+
+	const configPath = writeConfig({
+		domain: 'site.test',
+		paths: { home: '/' },
+		mask: [''],
+	});
+	assert.throws(() => loadConfig({ configPath }), /Invalid "mask"/);
 });

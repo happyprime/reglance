@@ -1,7 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright';
-import { filterTargets, DEFAULT_TIMEOUTS } from './config.mjs';
+import {
+	filterTargets,
+	DEFAULT_TIMEOUTS,
+	DEFAULT_NAVIGATION,
+} from './config.mjs';
 import { openImageCache } from './image-cache.mjs';
 import { MAX_DISPLAY_DIMENSION } from './downscale.mjs';
 
@@ -226,22 +230,135 @@ export function groupViewportsByScaleFactor(viewports) {
 }
 
 /**
+ * Builds the options for `chromium.launch()`.
+ *
+ * @param {object}  [browser]           The normalized `browser` config.
+ * @param {boolean} [ignoreHTTPSErrors] Whether to ignore certificate errors.
+ * @returns {object} The launch options.
+ */
+export function browserLaunchOptions(browser = {}, ignoreHTTPSErrors = false) {
+	const options = { ...browser.launchOptions };
+	const args = [...(options.args ?? [])];
+
+	if (ignoreHTTPSErrors) {
+		args.push('--ignore-certificate-errors');
+	}
+
+	if (args.length) {
+		options.args = args;
+	}
+
+	return options;
+}
+
+/**
+ * Builds the options for `browser.newContext()`.
+ *
+ * @param {object}      options                   Context settings.
+ * @param {number}      options.deviceScaleFactor The group's device pixel ratio.
+ * @param {boolean}     options.ignoreHTTPSErrors Whether to ignore certificate errors.
+ * @param {string|null} [options.userAgent]       The User-Agent to send.
+ * @param {object}      [options.stabilize]       The normalized `stabilize` config.
+ * @returns {object} The context options.
+ */
+export function browserContextOptions({
+	deviceScaleFactor,
+	ignoreHTTPSErrors,
+	userAgent = null,
+	stabilize = {},
+}) {
+	const options = { ignoreHTTPSErrors, deviceScaleFactor };
+
+	if (userAgent) {
+		options.userAgent = userAgent;
+	}
+
+	for (const key of ['reducedMotion', 'timezoneId', 'locale']) {
+		if (stabilize[key] !== undefined) {
+			options[key] = stabilize[key];
+		}
+	}
+
+	return options;
+}
+
+/**
+ * Builds the options for `page.screenshot()`.
+ *
+ * @param {import('playwright').Page} page                The page, to resolve mask selectors.
+ * @param {string}                    imagePath           Where to write the PNG.
+ * @param {object}                    [options]           Screenshot settings.
+ * @param {object}                    [options.stabilize] The normalized `stabilize` config.
+ * @param {string[]}                  [options.mask]      Selectors to paint over.
+ * @returns {object} The screenshot options.
+ */
+export function screenshotOptions(
+	page,
+	imagePath,
+	{ stabilize = {}, mask = [] } = {}
+) {
+	const options = { path: imagePath, fullPage: true };
+
+	for (const key of ['animations', 'caret']) {
+		if (stabilize[key] !== undefined) {
+			options[key] = stabilize[key];
+		}
+	}
+
+	if (mask.length) {
+		options.mask = mask.map((selector) => page.locator(selector));
+	}
+
+	return options;
+}
+
+/**
+ * Summarizes the main document's response for the capture result.
+ *
+ * `server` and `cf-mitigated` together show whether a CDN or a bot challenge
+ * answered in place of the site.
+ *
+ * @param {import('playwright').Response|null} response The response, if any arrived.
+ * @returns {{ status: number|null, finalUrl: string|null, headers: object }} The summary.
+ */
+export function documentResponse(response) {
+	if (!response) {
+		return { status: null, finalUrl: null, headers: { server: null } };
+	}
+
+	const headers = response.headers();
+	const summary = {
+		status: response.status(),
+		finalUrl: response.url(),
+		headers: { server: headers.server ?? null },
+	};
+
+	if (headers['cf-mitigated'] !== undefined) {
+		summary.headers['cf-mitigated'] = headers['cf-mitigated'];
+	}
+
+	return summary;
+}
+
+/**
  * Capture screenshots for a single target across all viewports.
  *
- * Returns the list of slugs that did not capture cleanly so the caller can
- * report them. A degraded capture is still written (best effort) but is
- * recorded as a failure rather than silently treated as success.
+ * Returns the slugs that did not capture cleanly so the caller can report
+ * them, and the main document's response for each slug that navigated. A
+ * degraded capture is still written (best effort) but is recorded as a
+ * failure rather than silently treated as success.
  *
  * Viewports are captured one context per device scale factor (see
  * groupViewportsByScaleFactor); within a context the first viewport navigates
  * fresh and the rest reuse the page (reloading unless --skip-reload).
  *
  * @param {import('playwright').Browser} browser   The shared browser.
- * @param {object}                       target    The target ({ key, url }).
+ * @param {object}                       target    The target ({ key, url, mask }).
  * @param {Array}                        viewports Viewport definitions.
  * @param {object}                       dirs      Output directory paths.
  * @param {object}                       options   Capture options.
- * @returns {Promise<Array<{ slug: string, url: string, reason: string }>>} Failed slugs.
+ * @returns {Promise<{ failures: Array, responses: object }>} Failed slugs, and
+ *   document responses keyed by slug.
  */
 async function captureTarget(browser, target, viewports, dirs, options) {
 	const {
@@ -251,15 +368,23 @@ async function captureTarget(browser, target, viewports, dirs, options) {
 		ignoreHTTPSErrors = false,
 		blockHosts = [],
 		imageCache = null,
+		userAgent = null,
+		stabilize = {},
+		waitUntil = DEFAULT_NAVIGATION.waitUntil,
 	} = options;
 	const failures = [];
+	const responses = {};
 	let currentSlug = target.key;
 
 	for (const group of groupViewportsByScaleFactor(viewports)) {
-		const context = await browser.newContext({
-			ignoreHTTPSErrors,
-			deviceScaleFactor: group.deviceScaleFactor,
-		});
+		const context = await browser.newContext(
+			browserContextOptions({
+				deviceScaleFactor: group.deviceScaleFactor,
+				ignoreHTTPSErrors,
+				userAgent,
+				stabilize,
+			})
+		);
 
 		if (blockHosts.length || imageCache) {
 			await context.route('**/*', async (route) => {
@@ -316,6 +441,20 @@ async function captureTarget(browser, target, viewports, dirs, options) {
 			}
 		});
 
+		// Taken from the event rather than goto()'s return value: goto()
+		// throws when the load wait times out, and a challenge page that never
+		// goes idle is the case where the status and headers matter most.
+		let mainResponse = null;
+		page.on('response', (response) => {
+			const request = response.request();
+			if (
+				request.isNavigationRequest() &&
+				request.frame() === page.mainFrame()
+			) {
+				mainResponse = response;
+			}
+		});
+
 		try {
 			for (let i = 0; i < group.viewports.length; i++) {
 				const viewport = group.viewports[i];
@@ -343,10 +482,11 @@ async function captureTarget(browser, target, viewports, dirs, options) {
 							}
 
 							const gotoOptions = {
-								waitUntil: 'networkidle',
+								waitUntil,
 								timeout: timeouts.goto,
 							};
 
+							mainResponse = null;
 							if (i === 0 || attempts > 0) {
 								await page.goto(target.url, gotoOptions);
 							} else {
@@ -378,11 +518,13 @@ async function captureTarget(browser, target, viewports, dirs, options) {
 					}
 				}
 
+				responses[slug] = documentResponse(mainResponse);
+
 				await autoScroll(page);
 				// A single event-driven settle after scrolling, bounded by the
 				// configurable timeout: near-instant on a page that is already
-				// quiet, and long enough for lazy assets on a slow one. (The goto
-				// above already waited for the initial network idle.)
+				// quiet, and long enough for lazy assets on a slow one. A
+				// timeout here never marks the capture degraded.
 				await page
 					.waitForLoadState('networkidle', {
 						timeout: timeouts.settle,
@@ -403,7 +545,12 @@ async function captureTarget(browser, target, viewports, dirs, options) {
 				}
 
 				const imagePath = path.join(dirs.captures, `${slug}.png`);
-				await page.screenshot({ path: imagePath, fullPage: true });
+				await page.screenshot(
+					screenshotOptions(page, imagePath, {
+						stabilize,
+						mask: target.mask,
+					})
+				);
 
 				// Browsers refuse to decode an image past ~32,767px on a side and
 				// show it as broken; tall mobile captures (narrow page, doubled by
@@ -441,7 +588,7 @@ async function captureTarget(browser, target, viewports, dirs, options) {
 		}
 	}
 
-	return failures;
+	return { failures, responses };
 }
 
 /**
@@ -470,7 +617,9 @@ export function shouldFailRun(failures, failOnDegraded = false) {
  * @param {boolean} [options.failOnDegraded] Exit non-zero if any capture is degraded.
  * @param {boolean} [options.freshImages]    Clear a persistent image cache first.
  * @param {Array}   [options.only]           Limit to these target keys.
- * @returns {Promise<{ failures: Array }>} The degraded-slug records.
+ * @returns {Promise<{ failures: Array, responses: object }>} The degraded-slug
+ *   records, and `{ status, finalUrl, headers }` of each slug's main document
+ *   keyed by slug.
  */
 export async function capture(config, options = {}) {
 	const {
@@ -541,7 +690,7 @@ export async function capture(config, options = {}) {
 	let browser;
 	try {
 		browser = await chromium.launch(
-			ignoreHTTPSErrors ? { args: ['--ignore-certificate-errors'] } : {}
+			browserLaunchOptions(config.browser, ignoreHTTPSErrors)
 		);
 	} catch (error) {
 		// The postinstall browser download is best-effort, so surface a missing
@@ -555,6 +704,7 @@ export async function capture(config, options = {}) {
 	}
 
 	const failures = [];
+	const responses = {};
 
 	try {
 		// A queue-based worker pool: each worker pulls the next target as soon
@@ -573,7 +723,7 @@ export async function capture(config, options = {}) {
 			}
 			while (queue.length) {
 				const target = queue.shift();
-				const targetFailures = await captureTarget(
+				const result = await captureTarget(
 					browser,
 					target,
 					config.viewports,
@@ -584,9 +734,15 @@ export async function capture(config, options = {}) {
 						ignoreHTTPSErrors,
 						blockHosts: config.blockHosts ?? [],
 						imageCache,
+						userAgent: config.browser?.userAgent ?? null,
+						stabilize: config.stabilize ?? {},
+						waitUntil:
+							config.navigation?.waitUntil ??
+							DEFAULT_NAVIGATION.waitUntil,
 					}
 				);
-				failures.push(...targetFailures);
+				failures.push(...result.failures);
+				Object.assign(responses, result.responses);
 			}
 		};
 
@@ -618,9 +774,9 @@ export async function capture(config, options = {}) {
 		if (shouldFailRun(failures, failOnDegraded)) {
 			process.exitCode = 1;
 		}
-		return { failures };
+		return { failures, responses };
 	}
 
 	console.log('\n✅ Capture complete');
-	return { failures: [] };
+	return { failures: [], responses };
 }
